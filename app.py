@@ -1,20 +1,11 @@
+
 """
-百合生长模型数据监测智能体平台 (Streamlit 版) - V2 布局优化
-功能：数据导入 | 阈值评估 | 分析交互 | 测试数据 | 数据总库
-排版：上下流式布局，卡片分隔，减少左右拥挤
+百合生长模型数据监测智能体平台 V2.1
+修复：卡片布局 | 分析交互子栏 | 纵轴标签 | 测试数据自动流程
 """
 
 import streamlit as st
-
-# ============================================================
-# Streamlit 页面配置（必须是第一个 Streamlit 命令）
-# ============================================================
-st.set_page_config(
-    page_title="百合生长模型数据监测智能体平台",
-    page_icon="🌷",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+st.set_page_config(page_title="百合生长模型数据监测智能体平台", page_icon="🌷", layout="wide", initial_sidebar_state="expanded")
 
 import pandas as pd
 import numpy as np
@@ -29,7 +20,7 @@ from collections import defaultdict
 from scipy import stats
 
 # ============================================================
-# 全局路径配置
+# 全局路径
 # ============================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_DIR = os.path.join(BASE_DIR, "config")
@@ -39,152 +30,65 @@ QUALIFIED_DIR = os.path.join(DATA_DIR, "qualified")
 UNQUALIFIED_DIR = os.path.join(DATA_DIR, "unqualified")
 METADATA_DIR = os.path.join(DATA_DIR, "metadata")
 TEST_DIR = os.path.join(DATA_DIR, "test")
-
 for d in [RAW_DIR, QUALIFIED_DIR, UNQUALIFIED_DIR, METADATA_DIR, TEST_DIR]:
     os.makedirs(d, exist_ok=True)
 
-# 加载物理极限表
-PHYSICAL_LIMITS_PATH = os.path.join(CONFIG_DIR, "physical_limits.json")
-with open(PHYSICAL_LIMITS_PATH, "r", encoding="utf-8") as f:
+with open(os.path.join(CONFIG_DIR, "physical_limits.json"), "r", encoding="utf-8") as f:
     PHYSICAL_LIMITS = json.load(f)
 
 # ============================================================
-# CSS 样式 - 卡片分隔 + 上下布局优化
+# CSS - 卡片布局 + 数据表格样式
 # ============================================================
 st.markdown("""
 <style>
-    /* 全局字体 */
-    * { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-    
-    /* 模块卡片容器 */
-    .module-card {
-        background: #ffffff;
-        border: 1px solid #e0e0e0;
-        border-radius: 12px;
-        padding: 24px 28px;
-        margin: 16px 0;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-    }
-    
-    /* 主标题 */
-    .main-title {
-        font-size: 26px;
-        font-weight: 700;
-        color: #1b5e20;
-        margin: 0;
-        padding: 8px 0;
-    }
-    
-    /* 模块子标题 */
-    .section-title {
-        font-size: 18px;
-        font-weight: 600;
-        color: #2e7d32;
-        margin: 0 0 16px 0;
-        padding-bottom: 8px;
-        border-bottom: 2px solid #c8e6c9;
-    }
-    
-    /* 信息提示框 */
-    .hint-box {
-        background: #f1f8e9;
-        border-left: 4px solid #689f38;
-        padding: 12px 16px;
-        border-radius: 0 8px 8px 0;
-        margin: 8px 0 16px 0;
-        color: #33691e;
-        font-size: 14px;
-    }
-    
-    /* 操作按钮区域 */
-    .action-area {
-        background: #fafafa;
-        border-radius: 10px;
-        padding: 20px;
-        margin: 12px 0;
-    }
-    
-    /* 数据预览区域 */
-    .preview-area {
-        background: #fafafa;
-        border-radius: 10px;
-        padding: 20px;
-        margin-top: 16px;
-    }
-    
-    /* 指标卡片横向排列 */
-    .metric-row {
-        display: flex;
-        gap: 16px;
-        margin: 16px 0;
-    }
-    
-    .metric-item {
-        flex: 1;
-        background: #e8f5e9;
-        border-radius: 10px;
-        padding: 16px;
-        text-align: center;
-    }
-    
-    .metric-num {
-        font-size: 28px;
-        font-weight: 700;
-        color: #2e7d32;
-    }
-    
-    .metric-text {
-        font-size: 13px;
-        color: #558b2f;
-        margin-top: 4px;
-    }
-    
-    /* Streamlit 原生组件覆盖 */
-    div[data-testid="stHorizontalBlock"] { gap: 12px !important; }
-    div[data-testid="stVerticalBlock"] { gap: 8px !important; }
+    .main-title { font-size: 24px; font-weight: 700; color: #1b5e20; text-align: center; padding: 8px 0; }
+    .subtitle { text-align: center; color: #689f38; font-size: 13px; margin-bottom: 16px; }
+    .section-title { font-size: 17px; font-weight: 600; color: #2e7d32; padding: 12px 0 8px 0; border-bottom: 2px solid #c8e6c9; margin: 8px 0 12px 0; }
+    .hint-box { background: #f1f8e9; border-left: 4px solid #689f38; padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 6px 0 12px 0; color: #33691e; font-size: 13px; }
+    .card { background: #ffffff; border: 1px solid #e0e0e0; border-radius: 12px; padding: 16px; margin: 8px 0; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+    .card-title { font-size: 15px; font-weight: 600; color: #333; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+    .tag { background: #e8eaf6; color: #3f51b5; font-size: 11px; padding: 2px 8px; border-radius: 12px; margin-left: 6px; }
+    .tag-ok { background: #e8f5e9; color: #2e7d32; }
+    .tag-warn { background: #fff3e0; color: #e65100; }
+    .tag-err { background: #ffebee; color: #c62828; }
 </style>
 """, unsafe_allow_html=True)
+
+# 修复 matplotlib 中文 + 纵轴标签
+plt.rcParams['axes.unicode_minus'] = False
 
 # ============================================================
 # 工具函数
 # ============================================================
-
 def get_next_batch_id():
     meta_path = os.path.join(METADATA_DIR, "batch_metadata.json")
     if os.path.exists(meta_path):
         with open(meta_path, "r", encoding="utf-8") as f:
-            metadata = json.load(f)
-        if metadata["batches"]:
-            last_id = max([int(b["batch_id"]) for b in metadata["batches"]])
-            return f"{last_id + 1:06d}"
+            m = json.load(f)
+        if m["batches"]: return f"{max([int(b['batch_id']) for b in m['batches']]) + 1:06d}"
     return "000001"
 
 def load_metadata():
-    meta_path = os.path.join(METADATA_DIR, "batch_metadata.json")
-    if os.path.exists(meta_path):
-        with open(meta_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+    p = os.path.join(METADATA_DIR, "batch_metadata.json")
+    if os.path.exists(p):
+        with open(p, "r", encoding="utf-8") as f: return json.load(f)
     return {"batches": [], "version": "1.0"}
 
-def save_metadata(metadata):
-    meta_path = os.path.join(METADATA_DIR, "batch_metadata.json")
-    with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump(metadata, f, ensure_ascii=False, indent=2)
+def save_metadata(m):
+    with open(os.path.join(METADATA_DIR, "batch_metadata.json"), "w", encoding="utf-8") as f:
+        json.dump(m, f, ensure_ascii=False, indent=2)
 
-def save_json(data, filepath):
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+def save_json(d, fp): 
+    with open(fp, "w", encoding="utf-8") as f: json.dump(d, f, ensure_ascii=False, indent=2)
 
-def load_json(filepath):
-    if os.path.exists(filepath):
-        with open(filepath, "r", encoding="utf-8") as f:
-            return json.load(f)
+def load_json(fp):
+    if os.path.exists(fp):
+        with open(fp, "r", encoding="utf-8") as f: return json.load(f)
     return None
 
 # ============================================================
-# 列名匹配 + 值验证
+# 列名匹配 + 物理极值 + 统计异常（保持不变）
 # ============================================================
-
 COLUMN_MAPPING = {
     "时期": {"required": True, "keywords": ["时期", "生长时期", "阶段", "生长期", "period", "stage", "phase"]},
     "维度": {"required": True, "keywords": ["维度", "类型", "category", "dimension", "type", "类别"]},
@@ -193,870 +97,738 @@ COLUMN_MAPPING = {
     "单位": {"required": False, "keywords": ["单位", "unit", "度量单位"]},
     "时间": {"required": False, "keywords": ["时间", "日期", "time", "date", "timestamp"]},
 }
-
-PERIOD_KEYWORDS = {
-    "萌芽期": ["萌芽", "发芽", "萌发"], "展叶期": ["展叶", "叶片展开"],
-    "孕蕾期": ["孕蕾", "蕾期", "花蕾期", "现蕾"], "开花期": ["开花", "花期", "盛花"],
-}
-
-DIMENSION_KEYWORDS = {
-    "环境": ["环境", "气象", "天气"], "土壤": ["土壤", "土质", "泥土"],
-    "生长状况": ["生长", "植株", "植物", "发育"],
-}
+PERIOD_KEYWORDS = {"萌芽期": ["萌芽", "发芽", "萌发"], "展叶期": ["展叶", "叶片展开"], "孕蕾期": ["孕蕾", "蕾期", "花蕾期", "现蕾"], "开花期": ["开花", "花期", "盛花"]}
+DIMENSION_KEYWORDS = {"环境": ["环境", "气象", "天气"], "土壤": ["土壤", "土质", "泥土"], "生长状况": ["生长", "植株", "植物", "发育"]}
 
 def smart_column_match(df_columns):
-    mapping = {}
-    matched = set()
-    for standard_name, config in COLUMN_MAPPING.items():
-        best_match, best_score = None, 0
+    mapping, matched = {}, set()
+    for sn, cfg in COLUMN_MAPPING.items():
+        bm, bs = None, 0
         for col in df_columns:
             if col in matched: continue
-            col_l = col.lower().strip()
-            for kw in config["keywords"]:
-                kw_l = kw.lower().strip()
-                if col_l == kw_l: best_match, best_score = col, 100; break
-                elif kw_l in col_l or col_l in kw_l:
-                    score = 80 if len(kw_l) >= 2 else 50
-                    if score > best_score: best_match, best_score = col, score
-                elif col_l.startswith(kw_l[:2]) and len(col_l) <= len(kw_l) + 2:
-                    score = 60
-                    if score > best_score: best_match, best_score = col, score
-            if best_score == 100: break
-        mapping[standard_name] = best_match
-        if best_match: matched.add(best_match)
+            cl = col.lower().strip()
+            for kw in cfg["keywords"]:
+                kl = kw.lower().strip()
+                if cl == kl: bm, bs = col, 100; break
+                elif kl in cl or cl in kl:
+                    sc = 80 if len(kl) >= 2 else 50
+                    if sc > bs: bm, bs = col, sc
+                elif cl.startswith(kl[:2]) and len(cl) <= len(kl) + 2:
+                    if 60 > bs: bm, bs = col, 60
+            if bs == 100: break
+        mapping[sn] = bm
+        if bm: matched.add(bm)
     return mapping
 
-def validate_period_value(value):
-    if pd.isna(value): return False, "空值"
-    v = str(value).strip()
-    if v in PERIOD_KEYWORDS: return True, v
+def validate_period_value(v):
+    if pd.isna(v): return False, "空值"
+    s = str(v).strip()
+    if s in PERIOD_KEYWORDS: return True, s
     for sp, kws in PERIOD_KEYWORDS.items():
         for kw in kws:
-            if kw in v or v in kw: return True, sp
-    return False, f"无法识别的时期: {v}"
+            if kw in s or s in kw: return True, sp
+    return False, f"无法识别: {s}"
 
-def validate_dimension_value(value):
-    if pd.isna(value): return False, "空值"
-    v = str(value).strip()
-    if v in DIMENSION_KEYWORDS: return True, v
+def validate_dimension_value(v):
+    if pd.isna(v): return False, "空值"
+    s = str(v).strip()
+    if s in DIMENSION_KEYWORDS: return True, s
     for sd, kws in DIMENSION_KEYWORDS.items():
         for kw in kws:
-            if kw in v or v in kw: return True, sd
-    return False, f"无法识别的维度: {v}"
-
-# ============================================================
-# 物理极值 + 统计异常
-# ============================================================
+            if kw in s or s in kw: return True, sd
+    return False, f"无法识别: {s}"
 
 def check_physical_limit(period, dimension, indicator, value):
-    period_data = PHYSICAL_LIMITS.get("limits", {}).get(period, {})
-    dim_data = period_data.get(dimension, {})
-    indicator_info = dim_data.get(indicator)
-    if indicator_info is None:
-        for dn, items in period_data.items():
-            if indicator in items: indicator_info = items[indicator]; break
-    if indicator_info is None:
-        return True, "无物理极限定义", {"min": None, "max": None, "unit": ""}
-    min_v, max_v, unit = indicator_info.get("min"), indicator_info.get("max"), indicator_info.get("unit", "")
-    limit_info = {"min": min_v, "max": max_v, "unit": unit}
-    if min_v is not None and value < min_v: return False, f"物理越限: {value} < 下限({min_v})", limit_info
-    if max_v is not None and value > max_v: return False, f"物理越限: {value} > 上限({max_v})", limit_info
-    return True, "物理合格", limit_info
+    pd_ = PHYSICAL_LIMITS.get("limits", {}).get(period, {})
+    dd = pd_.get(dimension, {})
+    ii = dd.get(indicator)
+    if ii is None:
+        for dn, items in pd_.items():
+            if indicator in items: ii = items[indicator]; break
+    if ii is None: return True, "无极限定义", {"min": None, "max": None, "unit": ""}
+    mn, mx, un = ii.get("min"), ii.get("max"), ii.get("unit", "")
+    li = {"min": mn, "max": mx, "unit": un}
+    if mn is not None and value < mn: return False, f"物理越限: {value} < {mn}", li
+    if mx is not None and value > mx: return False, f"物理越限: {value} > {mx}", li
+    return True, "合格", li
 
 def detect_statistical_anomaly(values):
     n = len(values)
-    if n < 5: return [False] * n, "样本量不足(<5)", {"n": n, "note": "跳过统计检测"}
+    if n < 5: return [False]*n, "样本不足", {"method": "跳过", "note": "n<5"}
     arr = np.array(values, dtype=float)
-    skewness = stats.skew(arr)
-    if abs(skewness) < 1.0:
-        mu, sigma = np.mean(arr), np.std(arr, ddof=1)
-        if sigma == 0: return [False] * n, "z-score(σ=0)", {"mu": mu, "sigma": 0, "note": "σ=0"}
-        z_scores = np.abs((arr - mu) / sigma)
-        anomalies = (z_scores > 3.0).tolist()
-        return anomalies, "统计异常(z-score)", {"method": "z-score", "mu": round(float(mu), 4),
-            "sigma": round(float(sigma), 4), "threshold_z": 3.0,
-            "threshold_range": [round(float(mu - 3 * sigma), 4), round(float(mu + 3 * sigma), 4)],
-            "n": n, "anomaly_count": sum(anomalies)}
-    else:
-        q1, q3 = np.percentile(arr, 25), np.percentile(arr, 75)
-        iqr = q3 - q1
-        lb, ub = q1 - 1.5 * iqr, q3 + 1.5 * iqr
-        anomalies = ((arr < lb) | (arr > ub)).tolist()
-        return anomalies, "统计异常(IQR)", {"method": "IQR", "Q1": round(float(q1), 4),
-            "Q3": round(float(q3), 4), "IQR": round(float(iqr), 4),
-            "lower_bound": round(float(lb), 4), "upper_bound": round(float(ub), 4),
-            "n": n, "anomaly_count": sum(anomalies)}
+    sk = stats.skew(arr)
+    if abs(sk) < 1.0:
+        mu, sg = np.mean(arr), np.std(arr, ddof=1)
+        if sg == 0: return [False]*n, "z-score", {"method": "z-score", "note": "sg=0"}
+        z = np.abs((arr - mu) / sg)
+        an = (z > 3.0).tolist()
+        return an, "z-score", {"method": "z-score", "mu": round(float(mu),4), "sigma": round(float(sg),4),
+            "range": [round(float(mu-3*sg),4), round(float(mu+3*sg),4)], "n": n, "anomaly": sum(an)}
+    q1, q3 = np.percentile(arr, 25), np.percentile(arr, 75)
+    iq = q3 - q1
+    lb, ub = q1 - 1.5*iq, q3 + 1.5*iq
+    an = ((arr < lb) | (arr > ub)).tolist()
+    return an, "IQR", {"method": "IQR", "Q1": round(float(q1),4), "Q3": round(float(q3),4),
+        "IQR": round(float(iq),4), "lb": round(float(lb),4), "ub": round(float(ub),4), "n": n, "anomaly": sum(an)}
 
 # ============================================================
-# 侧边栏导航
+# 核心评估逻辑（复用）
 # ============================================================
+def run_evaluation(records, batch_id="temp"):
+    """返回评估结果字典，供阈值评估和测试数据共用"""
+    groups = defaultdict(list)
+    for idx, rec in enumerate(records):
+        groups[(rec.get("时期", "未知"), rec.get("指标", "未知"))].append({"idx": idx, "record": rec})
 
-def sidebar_nav():
-    st.sidebar.markdown("""
-    <div style="text-align:center; padding:10px 0;">
-        <p style="color:#e8f5e9; font-size:24px; font-weight:700; margin:0;">🌷 百合监测平台</p>
-        <p style="color:rgba(232,245,233,0.6); font-size:12px; margin:4px 0 0 0;">低代码智能体系统</p>
-    </div>
-    """, unsafe_allow_html=True)
-    st.sidebar.divider()
+    qualified_records, unqualified_records = [], []
+    total_phy_fail = total_stat_fail = total_pass = 0
+    group_results = []
 
-    pages = {
-        "import": "📥 数据导入",
-        "evaluate": "🔍 阈值评估",
-        "analyze": "📊 分析交互",
-        "test": "🧪 测试数据",
-        "database": "🗄️ 数据总库",
+    for (period, indicator), items in sorted(groups.items()):
+        phy_passed, phy_failed = [], []
+        for it in items:
+            rec, val = it["record"], it["record"].get("数值")
+            if not isinstance(val, (int, float)):
+                try: val = float(val)
+                except: continue
+            ok, reason, limit_info = check_physical_limit(rec.get("时期", ""), rec.get("维度", ""), rec.get("指标", ""), val)
+            if ok: phy_passed.append({"record": rec, "value": val})
+            else: phy_failed.append({"record": rec, "reason": reason, "limit": limit_info}); total_phy_fail += 1
+
+        stat_info = {"method": "跳过", "note": "样本不足"}
+        if len(phy_passed) >= 5:
+            passed_vals = [p["value"] for p in phy_passed]
+            anomalies, method_name, stat_info = detect_statistical_anomaly(passed_vals)
+            for i, p in enumerate(phy_passed):
+                if anomalies[i]:
+                    unqualified_records.append({**p["record"], "_fail_reason": f"{method_name}: {p['value']}",
+                        "_fail_type": method_name, "_batch_id": batch_id}); total_stat_fail += 1
+                else: qualified_records.append(p["record"]); total_pass += 1
+        else:
+            for p in phy_passed: qualified_records.append(p["record"]); total_pass += 1
+
+        for f in phy_failed: unqualified_records.append({**f["record"], "_fail_reason": f["reason"],
+            "_fail_type": "物理越限", "_batch_id": batch_id})
+
+        # 收集每条记录的状态
+        record_status = []
+        for p in phy_passed:
+            stat = "合格"
+            if stat_info.get("method") != "跳过":
+                vals = [pp["value"] for pp in phy_passed]
+                if len(vals) >= 5:
+                    an, _, _ = detect_statistical_anomaly(vals)
+                    idx = [pp["record"]["数值"] for pp in phy_passed].index(p["value"])
+                    if idx < len(an) and an[idx]: stat = "统计异常"
+            record_status.append({**p["record"], "_status": stat})
+
+        for f in phy_failed:
+            record_status.append({**f["record"], "_status": "物理越限"})
+
+        group_results.append({"period": period, "indicator": indicator,
+            "dimension": items[0]["record"].get("维度", ""),
+            "total": len(items), "phy_pass": len(phy_passed), "phy_fail": len(phy_failed),
+            "method": stat_info.get("method", "跳过"), "stat_info": stat_info,
+            "limit": limit_info if phy_failed else (phy_passed[0]["record"] if phy_passed else {}),
+            "records": record_status[:50]  # 最多50条
+        })
+
+    return {
+        "qualified": qualified_records,
+        "unqualified": unqualified_records,
+        "groups": group_results,
+        "total": len(records),
+        "pass": total_pass,
+        "phy_fail": total_phy_fail,
+        "stat_fail": total_stat_fail,
+        "rate": round(total_pass / len(records) * 100, 1) if records else 0,
     }
-    selected = st.sidebar.radio("导航", list(pages.keys()), format_func=lambda x: pages[x], label_visibility="collapsed")
+
+# ============================================================
+# 图表绘制函数（修复纵轴标签）
+# ============================================================
+def make_bar_line(x_labels, values, title, color_bar="#4caf50", color_line="#ff5722", ylabel="合格率 (%)"):
+    """柱状+折线混合图，纵轴标签水平放置避免截断"""
+    fig, ax = plt.subplots(figsize=(10, 4.2))
+    x = np.arange(len(x_labels))
+    ax.bar(x, values, color=color_bar, alpha=0.7, width=0.45, label=ylabel.replace(" (%)", ""))
+    ax.plot(x, values, color=color_line, marker="o", linewidth=2.2, markersize=7, label="趋势")
+    ax.set_xticks(x)
+    # 中文标签不旋转避免截断，或只轻微旋转
+    if max(len(l) for l in x_labels) > 6:
+        ax.set_xticklabels(x_labels, rotation=15, ha="right", fontsize=9)
+    else:
+        ax.set_xticklabels(x_labels, fontsize=10)
+    ax.set_ylabel(ylabel, fontsize=11)
+    ax.set_title(title, fontsize=13, fontweight="bold", pad=10)
+    ax.set_ylim(0, 105)
+    ax.legend(fontsize=9, loc="upper right")
+    ax.grid(axis="y", alpha=0.25, linestyle="--")
+    for i, v in enumerate(values):
+        ax.text(i, v + 2.5, f"{v}%", ha="center", fontsize=9, fontweight="bold")
+    plt.tight_layout(pad=2.0)
+    return fig
+
+def make_wave_plot(records, sel_period, sel_indicator, limit_info):
+    """波动图，横轴简化避免拥挤"""
+    fig, ax = plt.subplots(figsize=(12, 4.5))
+    times = [r.get("时间", "") for r in records]
+    values = [r["数值"] for r in records if isinstance(r.get("数值"), (int, float))]
+
+    ax.plot(range(len(values)), values, color="#4caf50", marker="o", markersize=3, linewidth=1.3, label=sel_indicator)
+    if limit_info:
+        if limit_info.get("min") is not None:
+            ax.axhline(y=limit_info["min"], color="#f44336", linestyle="--", linewidth=1, label=f'下限 {limit_info["min"]}{limit_info.get("unit", "")}')
+        if limit_info.get("max") is not None:
+            ax.axhline(y=limit_info["max"], color="#f44336", linestyle="--", linewidth=1, label=f'上限 {limit_info["max"]}{limit_info.get("unit", "")}')
+
+    n = len(times)
+    if n <= 15:
+        ax.set_xticks(range(n)); ax.set_xticklabels(times, rotation=30, ha="right", fontsize=8)
+    else:
+        step = max(1, n // 10)
+        ticks = list(range(0, n, step))
+        ax.set_xticks(ticks); ax.set_xticklabels([times[i] if i < n else "" for i in ticks], rotation=30, ha="right", fontsize=8)
+
+    ax.set_xlabel("时间", fontsize=11)
+    unit = limit_info.get("unit", "") if limit_info else ""
+    ax.set_ylabel(f"{sel_indicator} ({unit})", fontsize=11)
+    ax.set_title(f"{sel_period} - {sel_indicator} 数据波动", fontsize=13, fontweight="bold", pad=10)
+    ax.legend(fontsize=9); ax.grid(alpha=0.25, linestyle="--")
+    plt.tight_layout(pad=2.0)
+    return fig
+
+# ============================================================
+# 侧边栏导航（主）
+# ============================================================
+def sidebar_nav():
+    st.sidebar.markdown("<div style='text-align:center; padding:6px 0;'><p style='color:#e8f5e9; font-size:22px; font-weight:700; margin:0;'>🌷 百合监测</p><p style='color:rgba(232,245,233,0.5); font-size:11px; margin:2px 0 0 0;'>低代码智能体平台 V2.1</p></div>", unsafe_allow_html=True)
     st.sidebar.divider()
-    st.sidebar.caption("🌱 百合生长模型数据监测智能体平台 v2.0")
-    return selected
+    pages = {"import": "📥 数据导入", "evaluate": "🔍 阈值评估", "analyze": "📊 分析交互", "test": "🧪 测试数据", "database": "🗄️ 数据总库"}
+    sel = st.sidebar.radio("导航", list(pages.keys()), format_func=lambda x: pages[x], label_visibility="collapsed")
+    st.sidebar.divider()
+    return sel
 
 # ============================================================
-# 模块1：数据导入 - 上下布局
+# 模块1：数据导入
 # ============================================================
-
 def page_import():
     st.markdown('<div class="main-title">📥 数据导入智能体</div>', unsafe_allow_html=True)
-    st.markdown('<div class="hint-box">支持 .xlsx / .csv 格式。系统自动匹配列名（时期/维度/指标/数值/单位/时间），校验空值，生成批次号。单批次上限 <b>5000</b> 行。</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">支持 .xlsx / .csv | 智能列名匹配 | 空值校验 | 单批次上限 5000 行</div>', unsafe_allow_html=True)
 
-    st.divider()
-
-    # 上传区域
     uploaded = st.file_uploader("📎 选择数据文件", type=["xlsx", "csv"])
+    if uploaded: st.info(f"📁 {uploaded.name} | {uploaded.size/1024:.1f} KB")
 
-    if uploaded:
-        st.info(f"📁 已选择: **{uploaded.name}** | 大小: {uploaded.size / 1024:.1f} KB")
-
-        if st.button("📤 开始导入", type="primary", use_container_width=False):
-            with st.spinner("⏳ 正在导入数据，请稍候..."):
-                try:
-                    if uploaded.name.endswith('.csv'):
-                        df = pd.read_csv(uploaded, encoding='utf-8')
-                    else:
-                        df = pd.read_excel(uploaded)
-
-                    total = len(df)
-                    if total == 0: st.error("❌ 文件为空"); return
-                    if total > 5000: st.error(f"❌ 数据行数 {total} 超过上限 5000 行"); return
-
-                    col_map = smart_column_match(list(df.columns))
-                    missing = [k for k, v in col_map.items() if COLUMN_MAPPING[k]["required"] and v is None]
-                    if missing:
-                        matched = "\n".join([f"{'✅' if v else '❌'} {k}: {v or '未匹配'}" for k, v in col_map.items()])
-                        st.error(f"❌ 缺少必填列: {', '.join(missing)}\n\n匹配结果:\n{matched}"); return
-
-                    rev_map = {v: k for k, v in col_map.items() if v}
-                    df_renamed = df.rename(columns=rev_map)
-
-                    valid_rows, error_details = [], []
-                    for idx, row in df_renamed.iterrows():
-                        errors = []
-                        for f in ["时期", "维度", "指标", "数值"]:
-                            if f in row.index and pd.isna(row[f]): errors.append(f"{f}为空")
-                        if "时期" in row.index and not pd.isna(row["时期"]):
-                            ok, msg = validate_period_value(row["时期"])
-                            if not ok: errors.append(msg)
-                            else: row = row.copy(); row["时期"] = msg
-                        if "维度" in row.index and not pd.isna(row["维度"]):
-                            ok, msg = validate_dimension_value(row["维度"])
-                            if not ok: errors.append(msg)
-                            else: row = row.copy(); row["维度"] = msg
-                        if "数值" in row.index and not pd.isna(row["数值"]):
-                            try: float(row["数值"])
-                            except: errors.append(f"数值格式无效: {row['数值']}")
-                        if errors:
-                            error_details.append({"行号": int(idx) + 2, "时期": str(row.get("时期", "")),
-                                "维度": str(row.get("维度", "")), "指标": str(row.get("指标", "")),
-                                "数值": str(row.get("数值", "")), "错误": "; ".join(errors)})
-                        else:
-                            valid_rows.append(row.to_dict())
-
-                    if not valid_rows: st.error(f"❌ 全部 {total} 行均无效"); return
-
-                    batch_id = get_next_batch_id()
-                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    raw_data = {"batch_id": batch_id, "import_time": timestamp,
-                        "original_file": uploaded.name, "total_rows": total,
-                        "valid_rows": len(valid_rows), "error_rows_count": len(error_details),
-                        "column_mapping": col_map, "data": valid_rows}
-                    save_json(raw_data, os.path.join(RAW_DIR, f"raw_batch_{batch_id}.json"))
-
-                    metadata = load_metadata()
-                    metadata["batches"].append({"batch_id": batch_id, "batch_name": f"批次_{batch_id}",
-                        "import_time": timestamp, "original_file": uploaded.name,
-                        "total_rows": total, "valid_rows": len(valid_rows),
-                        "status": "imported", "is_test": False})
-                    save_metadata(metadata)
-
-                    # 导入报告
-                    st.divider()
-                    st.markdown('<div class="section-title">📋 导入报告</div>', unsafe_allow_html=True)
-
-                    pass_rate = len(valid_rows) / total * 100
-                    c1, c2, c3, c4 = st.columns(4)
-                    c1.metric("📦 批次号", batch_id)
-                    c2.metric("📊 总行数", total)
-                    c3.metric("✅ 有效行", len(valid_rows))
-                    c4.metric("📎 合格率", f"{pass_rate:.1f}%")
-
-                    st.markdown("##### 🔍 列名匹配结果")
-                    match_df = pd.DataFrame([{"标准列名": k, "匹配列名": (v or "❌ 未匹配"), "状态": ("✅" if v else "❌")} for k, v in col_map.items()])
-                    st.dataframe(match_df, use_container_width=True, hide_index=True)
-
-                    if error_details:
-                        with st.expander(f"⚠️ 错误行详情 ({len(error_details)} 条)"):
-                            st.dataframe(pd.DataFrame(error_details), use_container_width=True, hide_index=True)
-
-                    st.markdown('<div class="section-title">👁️ 数据预览（前10行）</div>', unsafe_allow_html=True)
-                    st.dataframe(pd.DataFrame(valid_rows[:10]), use_container_width=True)
-
-                    export_df = pd.DataFrame(valid_rows)
-                    export_path = os.path.join(RAW_DIR, f"raw_batch_{batch_id}_export.xlsx")
-                    export_df.to_excel(export_path, index=False)
-                    with open(export_path, "rb") as f:
-                        st.download_button("⬇️ 下载原始数据 (Excel)", f, file_name=f"raw_batch_{batch_id}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                    st.success(f"✅ 导入完成！批次 {batch_id} 已就绪，可前往「阈值评估」进行下一步。")
-
-                except Exception as e:
-                    st.error(f"❌ 导入异常: {str(e)}")
-
-# ============================================================
-# 模块2：阈值评估 - 上下布局
-# ============================================================
-
-def page_evaluate():
-    st.markdown('<div class="main-title">🔍 阈值评估与数据分流智能体</div>', unsafe_allow_html=True)
-    st.markdown('<div class="hint-box">物理极值判断 → 自适应统计异常检测（z-score / IQR 自动选择）→ 分流合格/不合格数据</div>', unsafe_allow_html=True)
-
-    st.divider()
-
-    metadata = load_metadata()
-    imported_batches = [b for b in metadata.get("batches", []) if b.get("status") in ("imported", "evaluated")]
-    imported_batches.sort(key=lambda x: x.get("import_time", ""), reverse=True)
-
-    batch_options = {f"[{b['batch_id']}] {b.get('batch_name', '')} ({b['total_rows']}条, 状态:{b.get('status', '')})": b["batch_id"]
-        for b in imported_batches[:10]}
-
-    if not batch_options:
-        st.warning("⚠️ 暂无已导入的批次，请先到「数据导入」模块上传数据"); return
-
-    selected_label = st.selectbox("📂 选择批次", list(batch_options.keys()))
-    batch_id = batch_options[selected_label]
-
-    st.divider()
-
-    if st.button("▶️ 开始评估", type="primary", use_container_width=True):
-        with st.spinner("⏳ 正在进行阈值评估，请稍候..."):
+    if uploaded and st.button("📤 开始导入", type="primary"):
+        with st.spinner("⏳ 导入中..."):
             try:
-                raw_file = os.path.join(RAW_DIR, f"raw_batch_{batch_id}.json")
-                if not os.path.exists(raw_file): st.error("原始数据不存在"); return
+                df = pd.read_csv(uploaded, encoding='utf-8') if uploaded.name.endswith('.csv') else pd.read_excel(uploaded)
+                total = len(df)
+                if total == 0: st.error("文件为空"); return
+                if total > 5000: st.error(f"超过5000行({total})"); return
 
-                raw_data = load_json(raw_file)
-                records = raw_data.get("data", [])
-                if not records: st.error("无数据"); return
+                col_map = smart_column_match(list(df.columns))
+                missing = [k for k, v in col_map.items() if COLUMN_MAPPING[k]["required"] and v is None]
+                if missing:
+                    st.error(f"缺少必填列: {', '.join(missing)}"); return
 
-                groups = defaultdict(list)
-                for idx, rec in enumerate(records):
-                    groups[(rec.get("时期", "未知"), rec.get("指标", "未知"))].append({"idx": idx, "record": rec})
+                rev_map = {v: k for k, v in col_map.items() if v}
+                df_renamed = df.rename(columns=rev_map)
+                valid_rows, error_details = [], []
+                for idx, row in df_renamed.iterrows():
+                    errs = []
+                    for f in ["时期", "维度", "指标", "数值"]:
+                        if f in row.index and pd.isna(row[f]): errs.append(f"{f}空")
+                    if "时期" in row.index and not pd.isna(row["时期"]):
+                        ok, msg = validate_period_value(row["时期"])
+                        if not ok: errs.append(msg)
+                        else: row = row.copy(); row["时期"] = msg
+                    if "维度" in row.index and not pd.isna(row["维度"]):
+                        ok, msg = validate_dimension_value(row["维度"])
+                        if not ok: errs.append(msg)
+                        else: row = row.copy(); row["维度"] = msg
+                    if "数值" in row.index and not pd.isna(row["数值"]):
+                        try: float(row["数值"])
+                        except: errs.append(f"数值无效")
+                    if errs: error_details.append({"行": int(idx)+2, "时期": str(row.get("时期","")), "维度": str(row.get("维度","")), "指标": str(row.get("指标","")), "数值": str(row.get("数值","")), "错误": ";".join(errs)})
+                    else: valid_rows.append(row.to_dict())
+                if not valid_rows: st.error("全部无效"); return
 
-                qualified_records, unqualified_records = [], []
-                total_phy_fail = total_stat_fail = total_pass = 0
-                group_results = []
+                batch_id = get_next_batch_id()
+                ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                save_json({"batch_id": batch_id, "import_time": ts, "original_file": uploaded.name,
+                    "total_rows": total, "valid_rows": len(valid_rows), "error_rows_count": len(error_details),
+                    "column_mapping": col_map, "data": valid_rows}, os.path.join(RAW_DIR, f"raw_batch_{batch_id}.json"))
+                m = load_metadata()
+                m["batches"].append({"batch_id": batch_id, "batch_name": f"批次_{batch_id}", "import_time": ts,
+                    "original_file": uploaded.name, "total_rows": total, "valid_rows": len(valid_rows),
+                    "status": "imported", "is_test": False})
+                save_metadata(m)
 
-                for (period, indicator), items in sorted(groups.items()):
-                    phy_passed, phy_failed = [], []
-                    for it in items:
-                        rec, val = it["record"], it["record"].get("数值")
-                        if not isinstance(val, (int, float)):
-                            try: val = float(val)
-                            except:
-                                unqualified_records.append({**rec, "_fail_reason": "数值格式无效", "_fail_type": "格式错误", "_batch_id": batch_id})
-                                continue
-                        ok, reason, limit_info = check_physical_limit(rec.get("时期", ""), rec.get("维度", ""), rec.get("指标", ""), val)
-                        if ok: phy_passed.append({"record": rec, "value": val})
-                        else: phy_failed.append({"record": rec, "reason": reason, "limit": limit_info}); total_phy_fail += 1
-
-                    stat_info = {"method": "跳过", "note": "样本量不足"}
-                    if len(phy_passed) >= 5:
-                        passed_vals = [p["value"] for p in phy_passed]
-                        anomalies, method_name, stat_info = detect_statistical_anomaly(passed_vals)
-                        for i, p in enumerate(phy_passed):
-                            if anomalies[i]:
-                                unqualified_records.append({**p["record"], "_fail_reason": f"{method_name}: 值={p['value']}",
-                                    "_fail_type": method_name, "_batch_id": batch_id}); total_stat_fail += 1
-                            else: qualified_records.append(p["record"]); total_pass += 1
-                    else:
-                        for p in phy_passed: qualified_records.append(p["record"]); total_pass += 1
-
-                    for f in phy_failed: unqualified_records.append({**f["record"], "_fail_reason": f["reason"],
-                        "_fail_type": "物理越限", "_batch_id": batch_id})
-
-                    group_results.append({"period": period, "indicator": indicator,
-                        "dimension": items[0]["record"].get("维度", ""),
-                        "total": len(items), "phy_pass": len(phy_passed), "phy_fail": len(phy_failed),
-                        "method": stat_info.get("method", "跳过"), "stat_info": stat_info,
-                        "limit": limit_info if phy_failed else (phy_passed[0]["record"] if phy_passed else {})})
-
-                save_json({"batch_id": batch_id, "count": len(qualified_records), "data": qualified_records},
-                    os.path.join(QUALIFIED_DIR, f"qualified_{batch_id}.json"))
-                save_json({"batch_id": batch_id, "count": len(unqualified_records), "data": unqualified_records},
-                    os.path.join(UNQUALIFIED_DIR, f"unqualified_{batch_id}.json"))
-
-                for b in metadata["batches"]:
-                    if b["batch_id"] == batch_id:
-                        b["status"] = "evaluated"
-                        b["qualified_count"] = len(qualified_records)
-                        b["unqualified_count"] = len(unqualified_records)
-                        b["pass_rate"] = round(total_pass / len(records) * 100, 1) if records else 0
-                save_metadata(metadata)
-
-                total = len(records)
-                rate = round(total_pass / total * 100, 1) if total else 0
-
-                st.markdown('<div class="section-title">📊 评估结果概览</div>', unsafe_allow_html=True)
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("📊 总数据", f"{total} 条")
-                c2.metric("✅ 合格", f"{total_pass} 条", f"{rate}%")
-                c3.metric("❌ 物理越限", f"{total_phy_fail} 条")
-                c4.metric("⚠️ 统计异常", f"{total_stat_fail} 条")
-
-                st.markdown('<div class="section-title">📋 分组评估详情</div>', unsafe_allow_html=True)
-                for g in group_results:
-                    with st.expander(f"📌 {g['period']} — {g['indicator']}（维度:{g['dimension']} | 总{g['total']}条 | 物理越限{g['phy_fail']}）"):
-                        limit = g.get("limit", {})
-                        st.write(f"**物理范围:** [{limit.get('min', 'N/A')}, {limit.get('max', 'N/A')}] {limit.get('unit', '')}")
-                        st.write(f"**检测方法:** `{g['method']}`")
-                        si = g["stat_info"]
-                        if g["method"] == "z-score":
-                            st.write(f"**统计量:** μ = {si.get('mu')}, σ = {si.get('sigma')}, 3σ范围 = [{si.get('threshold_range', ['N/A','N/A'])[0]}, {si.get('threshold_range', ['N/A','N/A'])[1]}]")
-                        elif g["method"] == "IQR":
-                            st.write(f"**统计量:** Q1 = {si.get('Q1')}, Q3 = {si.get('Q3')}, IQR = {si.get('IQR')}, 阈值 = [{si.get('lower_bound')}, {si.get('upper_bound')}]")
-                        else:
-                            st.write(f"**说明:** {si.get('note', 'N/A')}")
-
-                st.success(f"✅ 评估完成！合格 {total_pass}/{total} 条 ({rate}%)。可前往「分析交互」查看图表。")
-
-            except Exception as e:
-                st.error(f"❌ 评估异常: {str(e)}")
+                pr = len(valid_rows)/total*100
+                st.success(f"✅ 导入成功！批次 {batch_id} | 总{total} | 有效{len(valid_rows)} | 合格率{pr:.1f}%")
+                if error_details:
+                    with st.expander(f"⚠️ 错误行 ({len(error_details)} 条)"): st.dataframe(pd.DataFrame(error_details), hide_index=True)
+                st.markdown("<div class='section-title'>预览（前10行）</div>", unsafe_allow_html=True)
+                st.dataframe(pd.DataFrame(valid_rows[:10]), hide_index=True)
+                ep = os.path.join(RAW_DIR, f"raw_batch_{batch_id}_export.xlsx")
+                pd.DataFrame(valid_rows).to_excel(ep, index=False)
+                with open(ep, "rb") as f: st.download_button("⬇️ 下载原始数据", f, file_name=f"raw_{batch_id}.xlsx")
+            except Exception as e: st.error(f"异常: {e}")
 
 # ============================================================
-# 模块3：分析交互 - 上下布局
+# 模块2：阈值评估 - 卡片网格布局
 # ============================================================
+def page_evaluate():
+    st.markdown('<div class="main-title">🔍 阈值评估与数据分流</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">物理极值判断 → 自适应统计异常检测（z-score / IQR）</div>', unsafe_allow_html=True)
 
-@st.cache_data(show_spinner=False)
-def cached_dim_rate(batch_id):
-    q = load_json(os.path.join(QUALIFIED_DIR, f"qualified_{batch_id}.json"))
-    u = load_json(os.path.join(UNQUALIFIED_DIR, f"unqualified_{batch_id}.json"))
-    if not q and not u: return None
-    qualified = q.get("data", []) if q else []
-    unqualified = u.get("data", []) if u else []
-    dim_total, dim_q = defaultdict(int), defaultdict(int)
-    for r in qualified: dim_total[r.get("维度", "未知")] += 1; dim_q[r.get("维度", "未知")] += 1
-    for r in unqualified: dim_total[r.get("维度", "未知")] += 1
-    dims = sorted(dim_total.keys())
-    rates = [round(dim_q.get(d, 0) / dim_total[d] * 100, 1) if dim_total[d] > 0 else 0 for d in dims]
-    return {"dims": dims, "rates": rates, "totals": [dim_total[d] for d in dims]}
+    m = load_metadata()
+    batches = [b for b in m.get("batches", []) if b.get("status") in ("imported", "evaluated")]
+    batches.sort(key=lambda x: x.get("import_time", ""), reverse=True)
+    opts = {f"[{b['batch_id']}] {b.get('batch_name','')} ({b['total_rows']}条)": b["batch_id"] for b in batches[:10]}
+    if not opts: st.warning("暂无批次，请先导入数据"); return
+    bid = opts[st.selectbox("选择批次", list(opts.keys()))]
 
-@st.cache_data(show_spinner=False)
-def cached_period_rate(batch_id):
-    q = load_json(os.path.join(QUALIFIED_DIR, f"qualified_{batch_id}.json"))
-    u = load_json(os.path.join(UNQUALIFIED_DIR, f"unqualified_{batch_id}.json"))
-    if not q and not u: return None
-    qualified = q.get("data", []) if q else []
-    unqualified = u.get("data", []) if u else []
-    p_total, p_q = defaultdict(int), defaultdict(int)
-    for r in qualified: p_total[r.get("时期", "未知")] += 1; p_q[r.get("时期", "未知")] += 1
-    for r in unqualified: p_total[r.get("时期", "未知")] += 1
-    order = ["萌芽期", "展叶期", "孕蕾期", "开花期"]
-    periods = [p for p in order if p in p_total] + sorted([p for p in p_total if p not in order])
-    rates = [round(p_q.get(p, 0) / p_total[p] * 100, 1) if p_total[p] > 0 else 0 for p in periods]
-    return {"periods": periods, "rates": rates, "totals": [p_total[p] for p in periods]}
+    if st.button("▶️ 开始评估", type="primary"):
+        with st.spinner("⏳ 评估中..."):
+            rf = os.path.join(RAW_DIR, f"raw_batch_{bid}.json")
+            if not os.path.exists(rf): st.error("原始数据不存在"); return
+            rd = load_json(rf)
+            records = rd.get("data", [])
+            if not records: st.error("无数据"); return
 
-@st.cache_data(show_spinner=False)
-def cached_wave_data(batch_id, period, indicator):
-    q_file = os.path.join(QUALIFIED_DIR, f"qualified_{batch_id}.json")
-    if not os.path.exists(q_file): return None
-    with open(q_file, "r") as f: records = json.load(f).get("data", [])
-    filtered = [r for r in records if r.get("时期") == period and r.get("指标") == indicator]
-    if not filtered: return None
-    filtered.sort(key=lambda x: x.get("时间", ""))
-    period_data = PHYSICAL_LIMITS.get("limits", {}).get(period, {})
-    limit_info = None
-    for dn, items in period_data.items():
-        if indicator in items: limit_info = items[indicator]; limit_info["dimension"] = dn; break
-    values = [r["数值"] for r in filtered if isinstance(r.get("数值"), (int, float))]
-    stats_d = {}
-    if values: stats_d = {"count": len(values), "mean": round(np.mean(values), 2), "std": round(np.std(values), 2),
-        "min": round(min(values), 2), "max": round(max(values), 2)}
-    return {"records": filtered, "limit": limit_info, "stats": stats_d}
+            result = run_evaluation(records, bid)
 
+            # 保存
+            save_json({"batch_id": bid, "count": len(result["qualified"]), "data": result["qualified"]},
+                os.path.join(QUALIFIED_DIR, f"qualified_{bid}.json"))
+            save_json({"batch_id": bid, "count": len(result["unqualified"]), "data": result["unqualified"]},
+                os.path.join(UNQUALIFIED_DIR, f"unqualified_{bid}.json"))
+            for b in m["batches"]:
+                if b["batch_id"] == bid:
+                    b["status"] = "evaluated"
+                    b["qualified_count"] = len(result["qualified"])
+                    b["unqualified_count"] = len(result["unqualified"])
+                    b["pass_rate"] = result["rate"]
+            save_metadata(m)
+
+            # 概览
+            st.markdown("<div class='section-title'>评估结果概览</div>", unsafe_allow_html=True)
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("📊 总数据", result["total"])
+            c2.metric("✅ 合格", result["pass"], f"{result['rate']}%")
+            c3.metric("❌ 物理越限", result["phy_fail"])
+            c4.metric("⚠️ 统计异常", result["stat_fail"])
+
+            # 分组卡片网格（2列）
+            st.markdown(f"<div class='section-title'>分组评估详情（共 {len(result['groups'])} 个分组）</div>", unsafe_allow_html=True)
+            groups = result["groups"]
+            for i in range(0, len(groups), 2):
+                cols = st.columns(2)
+                for j in range(2):
+                    if i + j >= len(groups): break
+                    g = groups[i + j]
+                    with cols[j]:
+                        with st.container():
+                            st.markdown(f"""
+                            <div class='card'>
+                                <div class='card-title'>
+                                    <span>📋 {g['period']} — {g['dimension']} — {g['indicator']}</span>
+                                    <span>
+                                        <span class='tag'>n={g['total']}</span>
+                                        <span class='tag{" tag-warn" if g["method"]=="跳过" else " tag-ok"}'>{g['method']}</span>
+                                    </span>
+                                </div>
+                            """, unsafe_allow_html=True)
+                            li = g.get("limit", {})
+                            st.write(f"**物理范围:** [{li.get('min','N/A')}, {li.get('max','N/A')}] {li.get('unit','')}")
+                            si = g["stat_info"]
+                            if g["method"] == "z-score":
+                                st.write(f"μ = {si.get('mu')} | σ = {si.get('sigma')} | 3σ = [{si.get('range',[0,0])[0]}, {si.get('range',[0,0])[1]}]")
+                            elif g["method"] == "IQR":
+                                st.write(f"Q1 = {si.get('Q1')} | Q3 = {si.get('Q3')} | IQR = {si.get('IQR')} | 阈值 = [{si.get('lb')}, {si.get('ub')}]")
+                            else:
+                                st.write(f"💡 {si.get('note','样本不足')}")
+
+                            # 数据明细表格
+                            if g["records"]:
+                                with st.expander(f"📑 数据明细（{len(g['records'])} 条）"):
+                                    df_r = pd.DataFrame([{
+                                        "时期": r.get("时期",""), "维度": r.get("维度",""), "指标": r.get("指标",""),
+                                        "数值": r.get("数值",""), "合格": r.get("_status","")
+                                    } for r in g["records"]])
+                                    st.dataframe(df_r, hide_index=True, use_container_width=True)
+                            st.markdown("</div>", unsafe_allow_html=True)
+
+            st.success(f"✅ 评估完成！可前往「分析交互」查看图表。")
+
+# ============================================================
+# 模块3：分析交互 - 侧边栏下设三个子栏
+# ============================================================
 def page_analyze():
     st.markdown('<div class="main-title">📊 分析交互智能体</div>', unsafe_allow_html=True)
-    st.markdown('<div class="hint-box">合格率仪表 | 波动图表（按钮触发）| 异常数据集合（筛选 + 分页 + 导出）</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">合格率仪表 | 波动图表 | 异常数据集合</div>', unsafe_allow_html=True)
 
-    st.divider()
+    m = load_metadata()
+    eb = [b for b in m.get("batches", []) if b.get("status") == "evaluated"]
+    if not eb: st.warning("暂无已评估批次"); return
+    eb.sort(key=lambda x: x.get("import_time", ""), reverse=True)
+    opts = {f"[{b['batch_id']}] {b.get('batch_name','')} (合格{b.get('qualified_count',0)}条)": b["batch_id"] for b in eb}
+    bid = opts[st.selectbox("📂 选择批次", list(opts.keys()), key="anal_batch")]
 
-    metadata = load_metadata()
-    eval_batches = [b for b in metadata.get("batches", []) if b.get("status") == "evaluated"]
-    if not eval_batches: st.warning("⚠️ 暂无已评估的批次，请先到「阈值评估」模块进行评估"); return
-    eval_batches.sort(key=lambda x: x.get("import_time", ""), reverse=True)
+    # 侧边栏子栏切换
+    st.sidebar.divider()
+    st.sidebar.markdown("<p style='color:#e8f5e9; font-size:14px; font-weight:600;'>📊 分析子栏</p>", unsafe_allow_html=True)
+    sub = st.sidebar.radio("", ["📈 合格率仪表", "📉 波动图表", "⚠️ 异常数据"], label_visibility="collapsed")
 
-    batch_options = {f"[{b['batch_id']}] {b.get('batch_name', '')} (合格{b.get('qualified_count', 0)}条 / 总{b['total_rows']}条)": b["batch_id"] for b in eval_batches}
-    selected_label = st.selectbox("📂 选择批次", list(batch_options.keys()), key="anal_batch")
-    batch_id = batch_options[selected_label]
+    if sub == "📈 合格率仪表":
+        st.markdown("<div class='section-title'>📈 合格率仪表</div>", unsafe_allow_html=True)
+        dr = cached_dim_rate(bid)
+        if dr:
+            fig = make_bar_line(dr["dims"], dr["rates"], "维度合格率", "#4caf50", "#ff5722", "合格率 (%)")
+            st.pyplot(fig, use_container_width=True)
+        pr = cached_period_rate(bid)
+        if pr:
+            fig2 = make_bar_line(pr["periods"], pr["rates"], "时期合格率", "#2196f3", "#ff9800", "合格率 (%)")
+            st.pyplot(fig2, use_container_width=True)
 
-    # ========== 合格率仪表 ==========
-    st.divider()
-    st.markdown('<div class="section-title">📈 合格率仪表</div>', unsafe_allow_html=True)
+    elif sub == "📉 波动图表":
+        st.markdown("<div class='section-title'>📉 波动图表</div>", unsafe_allow_html=True)
+        qf = os.path.join(QUALIFIED_DIR, f"qualified_{bid}.json")
+        if os.path.exists(qf):
+            with open(qf, "r") as f: ar = json.load(f).get("data", [])
+            pav = sorted(set(r.get("时期","") for r in ar if r.get("时期")))
+            iav = sorted(set(r.get("指标","") for r in ar if r.get("指标")))
+            sp = st.selectbox("🌱 时期", pav, key="wvp")
+            si = st.selectbox("📏 指标", iav, key="wvi")
+            if st.button("📈 生成波动图", type="primary"):
+                wd = cached_wave_data(bid, sp, si)
+                if wd and wd["records"]:
+                    fig = make_wave_plot(wd["records"], sp, si, wd.get("limit"))
+                    st.pyplot(fig, use_container_width=True)
+                    s = wd.get("stats", {})
+                    if s: st.info(f"样本{s.get('count')} | 均值{s.get('mean')} | 标准差{s.get('std')} | 范围[{s.get('min')}, {s.get('max')}]")
+                else: st.warning("无数据")
 
-    dim_data = cached_dim_rate(batch_id)
-    if dim_data:
-        st.markdown("##### 维度合格率")
-        fig, ax = plt.subplots(figsize=(10, 4))
-        x = np.arange(len(dim_data["dims"]))
-        ax.bar(x, dim_data["rates"], color="#4caf50", alpha=0.7, width=0.5, label="合格率(%)")
-        ax.plot(x, dim_data["rates"], color="#ff5722", marker="o", linewidth=2.5, markersize=8, label="趋势")
-        ax.set_xticks(x); ax.set_xticklabels(dim_data["dims"], fontsize=11)
-        ax.set_ylabel("合格率 (%)", fontsize=12); ax.set_ylim(0, 105)
-        ax.legend(fontsize=10); ax.grid(axis="y", alpha=0.3)
-        for i, r in enumerate(dim_data["rates"]): ax.text(i, r + 2, f"{r}%", ha="center", fontsize=10, fontweight="bold")
-        plt.tight_layout(); st.pyplot(fig, use_container_width=True)
+    elif sub == "⚠️ 异常数据":
+        st.markdown("<div class='section-title'>⚠️ 异常数据集合</div>", unsafe_allow_html=True)
+        uf = os.path.join(UNQUALIFIED_DIR, f"unqualified_{bid}.json")
+        if os.path.exists(uf):
+            with open(uf, "r") as f: uq = json.load(f).get("data", [])
+            fr = st.selectbox("🔍 筛选", ["全部", "物理越限", "统计异常(z-score)", "统计异常(IQR)"])
+            fl = uq
+            if fr != "全部":
+                if fr == "物理越限": fl = [r for r in uq if "物理越限" in str(r.get("_fail_type",""))]
+                elif fr == "统计异常(z-score)": fl = [r for r in uq if "z-score" in str(r.get("_fail_type",""))]
+                elif fr == "统计异常(IQR)": fl = [r for r in uq if "IQR" in str(r.get("_fail_type",""))]
+            st.write(f"共 **{len(fl)}** 条")
+            ps = 30
+            tp = max(1, (len(fl) + ps - 1) // ps)
+            pn = st.number_input("页码", 1, tp, 1)
+            si, ei = (pn-1)*ps, min(pn*ps, len(fl))
+            df_u = pd.DataFrame([{"时期":r.get("时期",""),"维度":r.get("维度",""),"指标":r.get("指标",""),"数值":r.get("数值",""),"单位":r.get("单位",""),"时间":r.get("时间",""),"异常原因":r.get("_fail_reason",""),"异常类型":r.get("_fail_type","")} for r in fl[si:ei]])
+            st.dataframe(df_u, hide_index=True)
+            st.caption(f"第 {pn}/{tp} 页 | {si+1}-{ei} / {len(fl)}")
+            csv = pd.DataFrame([{"时期":r.get("时期",""),"维度":r.get("维度",""),"指标":r.get("指标",""),"数值":r.get("数值",""),"单位":r.get("单位",""),"时间":r.get("时间",""),"异常原因":r.get("_fail_reason",""),"异常类型":r.get("_fail_type","")} for r in fl]).to_csv(index=False, encoding="utf-8-sig")
+            st.download_button("⬇️ 导出CSV", csv, file_name=f"uq_{bid}_{fr}.csv")
+        else: st.info("无异常数据")
 
-    period_data = cached_period_rate(batch_id)
-    if period_data:
-        st.markdown("##### 时期合格率")
-        fig2, ax2 = plt.subplots(figsize=(10, 4))
-        x2 = np.arange(len(period_data["periods"]))
-        ax2.bar(x2, period_data["rates"], color="#2196f3", alpha=0.7, width=0.5, label="合格率(%)")
-        ax2.plot(x2, period_data["rates"], color="#ff9800", marker="s", linewidth=2.5, markersize=8, label="趋势")
-        ax2.set_xticks(x2); ax2.set_xticklabels(period_data["periods"], fontsize=11)
-        ax2.set_ylabel("合格率 (%)", fontsize=12); ax2.set_ylim(0, 105)
-        ax2.legend(fontsize=10); ax2.grid(axis="y", alpha=0.3)
-        for i, r in enumerate(period_data["rates"]): ax2.text(i, r + 2, f"{r}%", ha="center", fontsize=10, fontweight="bold")
-        plt.tight_layout(); st.pyplot(fig2, use_container_width=True)
+@st.cache_data(show_spinner=False)
+def cached_dim_rate(bid):
+    q, u = load_json(os.path.join(QUALIFIED_DIR, f"qualified_{bid}.json")), load_json(os.path.join(UNQUALIFIED_DIR, f"unqualified_{bid}.json"))
+    if not q and not u: return None
+    qt, qq = defaultdict(int), defaultdict(int)
+    for r in (q.get("data",[]) if q else []): qt[r.get("维度","未知")]+=1; qq[r.get("维度","未知")]+=1
+    for r in (u.get("data",[]) if u else []): qt[r.get("维度","未知")]+=1
+    ds = sorted(qt.keys())
+    return {"dims": ds, "rates": [round(qq.get(d,0)/qt[d]*100,1) if qt[d]>0 else 0 for d in ds]}
 
-    # ========== 波动图表（按钮触发） ==========
-    st.divider()
-    st.markdown('<div class="section-title">📉 波动图表（按钮触发，延迟加载）</div>', unsafe_allow_html=True)
+@st.cache_data(show_spinner=False)
+def cached_period_rate(bid):
+    q, u = load_json(os.path.join(QUALIFIED_DIR, f"qualified_{bid}.json")), load_json(os.path.join(UNQUALIFIED_DIR, f"unqualified_{bid}.json"))
+    if not q and not u: return None
+    pt, pq = defaultdict(int), defaultdict(int)
+    for r in (q.get("data",[]) if q else []): pt[r.get("时期","未知")]+=1; pq[r.get("时期","未知")]+=1
+    for r in (u.get("data",[]) if u else []): pt[r.get("时期","未知")]+=1
+    ordr = ["萌芽期","展叶期","孕蕾期","开花期"]; ps = [p for p in ordr if p in pt]+sorted([p for p in pt if p not in ordr])
+    return {"periods": ps, "rates": [round(pq.get(p,0)/pt[p]*100,1) if pt[p]>0 else 0 for p in ps]}
 
-    q_file = os.path.join(QUALIFIED_DIR, f"qualified_{batch_id}.json")
-    if os.path.exists(q_file):
-        with open(q_file, "r") as f:
-            all_records = json.load(f).get("data", [])
-        periods_avail = sorted(set(r.get("时期", "") for r in all_records if r.get("时期")))
-        indicators_avail = sorted(set(r.get("指标", "") for r in all_records if r.get("指标")))
-
-        sel_period = st.selectbox("🌱 选择时期", periods_avail, key="wave_period")
-        sel_indicator = st.selectbox("📏 选择指标", indicators_avail, key="wave_index")
-        gen_wave = st.button("📈 生成波动图", type="primary", use_container_width=True)
-
-        if gen_wave:
-            wave = cached_wave_data(batch_id, sel_period, sel_indicator)
-            if wave and wave["records"]:
-                fig3, ax3 = plt.subplots(figsize=(12, 5))
-                records = wave["records"]
-                times = [r.get("时间", "") for r in records]
-                values = [r["数值"] for r in records if isinstance(r.get("数值"), (int, float))]
-                limit_info = wave.get("limit")
-
-                ax3.plot(range(len(values)), values, color="#4caf50", marker="o", markersize=4, linewidth=1.5, label=sel_indicator)
-                if limit_info:
-                    if limit_info.get("min") is not None:
-                        ax3.axhline(y=limit_info["min"], color="#f44336", linestyle="--", linewidth=1.2, label=f'下限 {limit_info["min"]}{limit_info.get("unit", "")}')
-                    if limit_info.get("max") is not None:
-                        ax3.axhline(y=limit_info["max"], color="#f44336", linestyle="--", linewidth=1.2, label=f'上限 {limit_info["max"]}{limit_info.get("unit", "")}')
-
-                step = max(1, len(times) // 12)
-                display_times = [t if i % step == 0 else "" for i, t in enumerate(times)]
-                ax3.set_xticks(range(len(display_times))); ax3.set_xticklabels(display_times, rotation=45, ha="right", fontsize=8)
-                ax3.set_xlabel("时间", fontsize=11)
-                unit = limit_info.get("unit", "") if limit_info else ""
-                ax3.set_ylabel(f"{sel_indicator} ({unit})", fontsize=11)
-                ax3.set_title(f"{sel_period} — {sel_indicator} 数据波动", fontsize=14, fontweight="bold")
-                ax3.legend(fontsize=10); ax3.grid(alpha=0.3)
-                plt.tight_layout(); st.pyplot(fig3, use_container_width=True)
-
-                stats = wave.get("stats", {})
-                if stats:
-                    st.info(f"📊 样本数: **{stats.get('count', 0)}** | 均值: **{stats.get('mean')}** | 标准差: **{stats.get('std')}** | 范围: **[{stats.get('min')}, {stats.get('max')}]**")
-            else:
-                st.warning(f"{sel_period} — {sel_indicator} 无合格数据")
-
-    # ========== 异常数据集合 ==========
-    st.divider()
-    st.markdown('<div class="section-title">⚠️ 异常数据集合</div>', unsafe_allow_html=True)
-
-    uq_file = os.path.join(UNQUALIFIED_DIR, f"unqualified_{batch_id}.json")
-    if os.path.exists(uq_file):
-        with open(uq_file, "r") as f: uq_data = json.load(f).get("data", [])
-
-        filter_reason = st.selectbox("🔍 按异常原因筛选", ["全部", "物理越限", "统计异常(z-score)", "统计异常(IQR)"], key="uq_filter")
-
-        filtered = uq_data
-        if filter_reason != "全部":
-            if filter_reason == "物理越限": filtered = [r for r in uq_data if "物理越限" in str(r.get("_fail_type", ""))]
-            elif filter_reason == "统计异常(z-score)": filtered = [r for r in uq_data if "z-score" in str(r.get("_fail_type", ""))]
-            elif filter_reason == "统计异常(IQR)": filtered = [r for r in uq_data if "IQR" in str(r.get("_fail_type", ""))]
-
-        st.write(f"📋 共 **{len(filtered)}** 条异常数据")
-
-        page_size = 30
-        total_pages = max(1, (len(filtered) + page_size - 1) // page_size)
-        page_num = st.number_input("📄 页码", min_value=1, max_value=total_pages, value=1, step=1, key="uq_page")
-        start_idx = (page_num - 1) * page_size
-        end_idx = min(start_idx + page_size, len(filtered))
-        page_data = filtered[start_idx:end_idx]
-
-        df_uq = pd.DataFrame([{
-            "时期": r.get("时期", ""), "维度": r.get("维度", ""), "指标": r.get("指标", ""),
-            "数值": r.get("数值", ""), "单位": r.get("单位", ""), "时间": r.get("时间", ""),
-            "异常原因": r.get("_fail_reason", ""), "异常类型": r.get("_fail_type", ""),
-        } for r in page_data])
-        st.dataframe(df_uq, use_container_width=True)
-        st.caption(f"第 {page_num}/{total_pages} 页 | 显示 {start_idx+1}-{end_idx} 条 / 共 {len(filtered)} 条")
-
-        export_df = pd.DataFrame([{
-            "时期": r.get("时期", ""), "维度": r.get("维度", ""), "指标": r.get("指标", ""),
-            "数值": r.get("数值", ""), "单位": r.get("单位", ""), "时间": r.get("时间", ""),
-            "异常原因": r.get("_fail_reason", ""), "异常类型": r.get("_fail_type", ""),
-        } for r in filtered])
-        csv = export_df.to_csv(index=False, encoding="utf-8-sig")
-        st.download_button("⬇️ 导出 CSV", csv, file_name=f"unqualified_{batch_id}_{filter_reason}.csv", mime="text/csv")
-    else:
-        st.info("该批次无异常数据")
+@st.cache_data(show_spinner=False)
+def cached_wave_data(bid, period, indicator):
+    qf = os.path.join(QUALIFIED_DIR, f"qualified_{bid}.json")
+    if not os.path.exists(qf): return None
+    with open(qf) as f: rs = json.load(f).get("data",[])
+    fl = [r for r in rs if r.get("时期")==period and r.get("指标")==indicator]
+    if not fl: return None
+    fl.sort(key=lambda x: x.get("时间",""))
+    pd_ = PHYSICAL_LIMITS.get("limits",{}).get(period,{})
+    li = None
+    for dn, items in pd_.items():
+        if indicator in items: li = items[indicator]; li["dimension"]=dn; break
+    vs = [r["数值"] for r in fl if isinstance(r.get("数值"),(int,float))]
+    st_ = {}
+    if vs: st_ = {"count":len(vs),"mean":round(np.mean(vs),2),"std":round(np.std(vs),2),"min":round(min(vs),2),"max":round(max(vs),2)}
+    return {"records":fl,"limit":li,"stats":st_}
 
 # ============================================================
-# 模块4：测试数据 - 上下布局 + 正式导入功能
+# 模块4：测试数据 - 自动评估+分析，退出时清理
 # ============================================================
-
-def generate_test_data(name, total, normal_ratio, phy_ratio, stat_ratio, period_cfg, start_date, fmt):
-    try: period_dist = json.loads(period_cfg)
-    except: period_dist = {"萌芽期": 0.25, "展叶期": 0.25, "孕蕾期": 0.25, "开花期": 0.25}
-
-    configs = []
-    for period, dim_data in PHYSICAL_LIMITS["limits"].items():
-        for dim, indicators in dim_data.items():
-            for ind, info in indicators.items():
-                configs.append((period, dim, ind, info["unit"], info["min"], info["max"]))
-
-    rows, base_date = [], datetime.strptime(start_date, "%Y-%m-%d")
+def generate_test_data(name, total, normal_ratio, phy_ratio, stat_ratio, period_cfg, start_date):
+    try: pd_ = json.loads(period_cfg)
+    except: pd_ = {"萌芽期":0.25,"展叶期":0.25,"孕蕾期":0.25,"开花期":0.25}
+    cfgs = []
+    for period, dd in PHYSICAL_LIMITS["limits"].items():
+        for dim, inds in dd.items():
+            for ind, info in inds.items(): cfgs.append((period,dim,ind,info["unit"],info["min"],info["max"]))
+    rows, bd = [], datetime.strptime(start_date, "%Y-%m-%d")
     np.random.seed(42)
-
     for i in range(total):
-        period = np.random.choice(list(period_dist.keys()), p=list(period_dist.values()))
-        cfg_list = [c for c in configs if c[0] == period]
-        if not cfg_list: continue
-        period, dim, ind, unit, pmin, pmax = cfg_list[i % len(cfg_list)]
-
+        prd = np.random.choice(list(pd_.keys()), p=list(pd_.values()))
+        cl = [c for c in cfgs if c[0]==prd]
+        if not cl: continue
+        period,dim,ind,unit,pmin,pmax = cl[i%len(cl)]
         r = np.random.random()
-        if r < normal_ratio:
-            val = np.random.uniform(pmin + (pmax - pmin) * 0.2, pmax - (pmax - pmin) * 0.2)
-        elif r < normal_ratio + phy_ratio:
-            val = np.random.choice([pmin - np.random.uniform(5, 20), pmax + np.random.uniform(5, 20)])
+        if r < normal_ratio: val = np.random.uniform(pmin+(pmax-pmin)*0.2, pmax-(pmax-pmin)*0.2)
+        elif r < normal_ratio+phy_ratio: val = np.random.choice([pmin-np.random.uniform(5,20), pmax+np.random.uniform(5,20)])
         else:
-            bg = [np.random.uniform(pmin + (pmax - pmin) * 0.2, pmax - (pmax - pmin) * 0.2) for _ in range(10)]
-            if len(bg) >= 5 and abs(stats.skew(bg)) < 1:
-                mu_bg, s_bg = np.mean(bg), np.std(bg)
-                val = mu_bg + np.random.choice([-1, 1]) * np.random.uniform(3.5, 5) * s_bg if s_bg > 0 else mu_bg
+            bg = [np.random.uniform(pmin+(pmax-pmin)*0.2, pmax-(pmax-pmin)*0.2) for _ in range(10)]
+            if len(bg)>=5 and abs(stats.skew(bg))<1:
+                mb, sb = np.mean(bg), np.std(bg)
+                val = mb+np.random.choice([-1,1])*np.random.uniform(3.5,5)*sb if sb>0 else mb
             else:
-                q1_b, q3_b = np.percentile(bg, 25), np.percentile(bg, 75)
-                iqr_b = q3_b - q1_b
-                val = q3_b + np.random.uniform(1.5, 3) * iqr_b if np.random.random() > 0.5 else q1_b - np.random.uniform(1.5, 3) * iqr_b
-
-        rows.append({"时期": period, "维度": dim, "指标": ind, "数值": round(float(val), 2),
-            "单位": unit, "时间": (base_date + timedelta(days=i)).strftime("%Y-%m-%d")})
-
-    df = pd.DataFrame(rows)
-    return df
+                q1b,q3b = np.percentile(bg,25), np.percentile(bg,75)
+                val = q3b+np.random.uniform(1.5,3)*(q3b-q1b) if np.random.random()>0.5 else q1b-np.random.uniform(1.5,3)*(q3b-q1b)
+        rows.append({"时期":period,"维度":dim,"指标":ind,"数值":round(float(val),2),"单位":unit,"时间":(bd+timedelta(days=i)).strftime("%Y-%m-%d")})
+    return pd.DataFrame(rows)
 
 def page_test():
     st.markdown('<div class="main-title">🧪 测试数据智能体</div>', unsafe_allow_html=True)
-    st.markdown('<div class="hint-box">自定义生成模拟数据。可选择「正式导入系统」使其进入阈值评估和分析交互流程，或仅做临时评估。</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">生成模拟数据 → 自动评估 → 查看图表（退出后自动清理）</div>', unsafe_allow_html=True)
 
-    st.divider()
+    # 清理状态
+    if "test_result" not in st.session_state: st.session_state.test_result = None
 
-    # 参数设置区域
-    st.markdown('<div class="section-title">⚙️ 参数设置</div>', unsafe_allow_html=True)
-
+    st.markdown("<div class='section-title'>⚙️ 参数设置</div>", unsafe_allow_html=True)
     if "test_cfg" not in st.session_state:
-        st.session_state.test_cfg = {"name": "test_001", "total": 100, "normal": 0.7, "phy": 0.15, "stat": 0.15,
-            "period": '{"萌芽期":0.25,"展叶期":0.25,"孕蕾期":0.25,"开花期":0.25}', "start": datetime.now().strftime("%Y-%m-%d")}
+        st.session_state.test_cfg = {"name":"test_001","total":100,"normal":0.7,"phy":0.15,"stat":0.15,
+            "period":'{"萌芽期":0.25,"展叶期":0.25,"孕蕾期":0.25,"开花期":0.25}',"start":datetime.now().strftime("%Y-%m-%d")}
+    cg = st.session_state.test_cfg
 
-    cfg = st.session_state.test_cfg
+    name = st.text_input("🏷️ 批次名称", cg["name"], key="tname")
+    total = st.number_input("📊 总记录数", 10, 5000, cg["total"], 10, key="ttotal")
+    st.markdown("##### 数据类型比例（和=1.0）")
+    nr = st.slider("✅ 正常", 0.0, 1.0, cg["normal"], 0.05, key="tnr")
+    pr = st.slider("❌ 物理超限", 0.0, 1.0-nr, cg["phy"], 0.05, key="tpr")
+    sr = st.slider("⚠️ 统计异常", 0.0, 1.0-nr-pr, min(cg["stat"],1.0-nr-pr), 0.05, key="tsr")
+    pc = st.text_area("🌱 时期占比(JSON)", cg["period"], key="tpc")
+    sd = st.text_input("📅 起始日期", cg["start"], key="tsd")
 
-    name = st.text_input("🏷️ 批次名称", value=cfg["name"], key="test_name")
-    total = st.number_input("📊 总记录数", min_value=10, max_value=5000, value=cfg["total"], step=10, key="test_total")
-
-    st.markdown("##### 数据类型比例（三者之和必须 = 1.0）")
-    normal_r = st.slider("✅ 正常数据比例", 0.0, 1.0, cfg["normal"], 0.05, key="test_normal")
-    phy_r = st.slider("❌ 物理超限比例", 0.0, 1.0 - normal_r, cfg["phy"], 0.05, key="test_phy")
-    stat_r = st.slider("⚠️ 统计异常比例", 0.0, 1.0 - normal_r - phy_r, min(cfg["stat"], 1.0 - normal_r - phy_r), 0.05, key="test_stat")
-
-    st.markdown("##### 其他参数")
-    period_cfg = st.text_area("🌱 时期占比 (JSON格式)", value=cfg["period"], key="test_period")
-    start_date = st.text_input("📅 起始日期 (YYYY-MM-DD)", value=cfg["start"], key="test_start")
-    fmt = st.radio("📁 输出格式", ["xlsx", "csv"], horizontal=True, key="test_fmt")
-
-    st.divider()
-
-    # 生成按钮
-    if st.button("⚡ 生成测试数据", type="primary", use_container_width=True):
-        with st.spinner("⏳ 正在生成测试数据..."):
+    if st.button("⚡ 生成并评估", type="primary"):
+        with st.spinner("⏳ 生成数据并评估中..."):
             try:
-                if abs(normal_r + phy_r + stat_r - 1.0) > 0.01:
-                    st.error("❌ 比例之和必须等于 1.0"); return
-
-                df = generate_test_data(name, total, normal_r, phy_r, stat_r, period_cfg, start_date, fmt)
-                st.session_state.test_cfg.update({"name": name, "total": total, "normal": normal_r, "phy": phy_r,
-                    "stat": stat_r, "period": period_cfg, "start": start_date})
+                if abs(nr+pr+sr-1.0)>0.01: st.error("比例和≠1.0"); return
+                df = generate_test_data(name, total, nr, pr, sr, pc, sd)
+                st.session_state.test_cfg.update({"name":name,"total":total,"normal":nr,"phy":pr,"stat":sr,"period":pc,"start":sd})
                 st.session_state.last_test_df = df
 
-                st.markdown('<div class="section-title">✅ 生成结果</div>', unsafe_allow_html=True)
-                st.success(f"✅ 成功生成 **{len(df)}** 条测试数据！")
+                # 自动评估
+                records = df.to_dict("records")
+                result = run_evaluation(records, "temp")
+                st.session_state.test_result = result
 
-                # 统计概览
-                st.markdown("##### 数据统计概览")
-                c1, c2, c3, c4 = st.columns(4)
-                for p in df["时期"].unique():
-                    c1.metric("🌱 萌芽期", len(df[df["时期"].str.contains("萌芽", na=False)]))
-                    c2.metric("🍃 展叶期", len(df[df["时期"].str.contains("展叶", na=False)]))
-                    c3.metric("🌷 孕蕾期", len(df[df["时期"].str.contains("孕蕾", na=False)]))
-                    c4.metric("🌸 开花期", len(df[df["时期"].str.contains("开花", na=False)]))
-                    break
+                st.success(f"✅ 生成{len(df)}条 | 合格{result['pass']}({result['rate']}%) | 物理越限{result['phy_fail']} | 统计异常{result['stat_fail']}")
+            except Exception as e: st.error(f"失败: {e}")
 
-                st.markdown("##### 数据预览（前10行）")
-                st.dataframe(df.head(10), use_container_width=True)
+    # 展示评估结果 + 分析图表
+    if st.session_state.test_result:
+        res = st.session_state.test_result
 
-                # 保存到 TEST_DIR 供下载
-                test_path = os.path.join(TEST_DIR, f"test_{name}.{fmt}")
-                if fmt == "csv": df.to_csv(test_path, index=False, encoding="utf-8-sig")
-                else: df.to_excel(test_path, index=False)
+        # 1. 评估概览
+        st.markdown("<div class='section-title'>📊 自动评估结果</div>", unsafe_allow_html=True)
+        c1,c2,c3,c4 = st.columns(4)
+        c1.metric("总数据", res["total"]); c2.metric("合格", res["pass"], f"{res['rate']}%")
+        c3.metric("物理越限", res["phy_fail"]); c4.metric("统计异常", res["stat_fail"])
 
-                with open(test_path, "rb") as f:
-                    st.download_button("⬇️ 下载测试数据", f, file_name=f"test_{name}.{fmt}",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if fmt == "xlsx" else "text/csv")
+        # 2. 分组卡片
+        st.markdown(f"<div class='section-title'>分组详情（{len(res['groups'])} 组）</div>", unsafe_allow_html=True)
+        for i in range(0, len(res["groups"]), 2):
+            cols = st.columns(2)
+            for j in range(2):
+                if i+j >= len(res["groups"]): break
+                g = res["groups"][i+j]
+                with cols[j]:
+                    with st.container():
+                        st.markdown(f"""
+                        <div class='card'>
+                            <div class='card-title'>
+                                <span>📋 {g['period']} — {g['dimension']} — {g['indicator']}</span>
+                                <span><span class='tag'>n={g['total']}</span><span class='tag{" tag-warn" if g["method"]=="跳过" else " tag-ok"}'>{g['method']}</span></span>
+                            </div>
+                        """, unsafe_allow_html=True)
+                        li = g.get("limit",{})
+                        st.write(f"范围: [{li.get('min','N/A')}, {li.get('max','N/A')}] {li.get('unit','')}")
+                        si = g["stat_info"]
+                        if g["method"]=="z-score": st.write(f"μ={si.get('mu')} σ={si.get('sigma')}")
+                        elif g["method"]=="IQR": st.write(f"Q1={si.get('Q1')} Q3={si.get('Q3')} IQR={si.get('IQR')}")
+                        else: st.write(f"💡 {si.get('note','')}")
+                        if g["records"]:
+                            with st.expander(f"明细({len(g['records'])}条)"):
+                                st.dataframe(pd.DataFrame([{"时期":r.get("时期",""),"维度":r.get("维度",""),"指标":r.get("指标",""),"数值":r.get("数值",""),"状态":r.get("_status","")} for r in g["records"]]), hide_index=True)
+                        st.markdown("</div>", unsafe_allow_html=True)
 
-            except Exception as e:
-                st.error(f"❌ 生成失败: {str(e)}")
+        # 3. 分析图表（自动展示）
+        st.markdown("<div class='section-title'>📈 合格率图表</div>", unsafe_allow_html=True)
+        # 维度合格率
+        dim_total, dim_q = defaultdict(int), defaultdict(int)
+        for r in res["qualified"]: dim_total[r.get("维度","未知")]+=1; dim_q[r.get("维度","未知")]+=1
+        for r in res["unqualified"]: dim_total[r.get("维度","未知")]+=1
+        if dim_total:
+            ds = sorted(dim_total.keys())
+            rs = [round(dim_q.get(d,0)/dim_total[d]*100,1) for d in ds]
+            fig = make_bar_line(ds, rs, "维度合格率（测试数据）", "#4caf50", "#ff5722", "合格率 (%)")
+            st.pyplot(fig, use_container_width=True)
+        # 时期合格率
+        ptotal, pq = defaultdict(int), defaultdict(int)
+        for r in res["qualified"]: ptotal[r.get("时期","未知")]+=1; pq[r.get("时期","未知")]+=1
+        for r in res["unqualified"]: ptotal[r.get("时期","未知")]+=1
+        if ptotal:
+            ordr = ["萌芽期","展叶期","孕蕾期","开花期"]; ps = [p for p in ordr if p in ptotal]+sorted([p for p in ptotal if p not in ordr])
+            rs2 = [round(pq.get(p,0)/ptotal[p]*100,1) for p in ps]
+            fig2 = make_bar_line(ps, rs2, "时期合格率（测试数据）", "#2196f3", "#ff9800", "合格率 (%)")
+            st.pyplot(fig2, use_container_width=True)
 
-    # ========== 操作区域 ==========
-    if "last_test_df" in st.session_state:
-        st.divider()
-        st.markdown('<div class="section-title">🔧 后续操作</div>', unsafe_allow_html=True)
+        # 4. 异常数据表
+        if res["unqualified"]:
+            st.markdown("<div class='section-title'>⚠️ 异常数据</div>", unsafe_allow_html=True)
+            df_u = pd.DataFrame([{"时期":r.get("时期",""),"维度":r.get("维度",""),"指标":r.get("指标",""),"数值":r.get("数值",""),"原因":r.get("_fail_reason",""),"类型":r.get("_fail_type","")} for r in res["unqualified"]])
+            st.dataframe(df_u, hide_index=True)
+            csv = df_u.to_csv(index=False, encoding="utf-8-sig")
+            st.download_button("⬇️ 导出异常数据CSV", csv, file_name=f"test_unqualified_{name}.csv")
 
-        df = st.session_state.last_test_df
-
-        # 操作按钮（上下排列，不左右并列）
-        st.markdown("##### 选项一：正式导入系统（推荐）")
-        st.write("将测试数据作为正式批次导入，可进入「阈值评估」和「分析交互」流程。")
-        if st.button("📥 正式导入系统", type="primary", use_container_width=True, key="btn_formal_import"):
-            with st.spinner("⏳ 正在导入系统..."):
-                try:
-                    batch_id = get_next_batch_id()
-                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    records = df.to_dict("records")
-
-                    # 保存 raw_batch
-                    raw_data = {"batch_id": batch_id, "import_time": timestamp,
-                        "original_file": f"test_{name}.xlsx", "total_rows": len(records),
-                        "valid_rows": len(records), "error_rows_count": 0,
-                        "column_mapping": {k: k for k in ["时期", "维度", "指标", "数值", "单位", "时间"]},
-                        "data": records}
-                    save_json(raw_data, os.path.join(RAW_DIR, f"raw_batch_{batch_id}.json"))
-
-                    # 更新 metadata
-                    metadata = load_metadata()
-                    metadata["batches"].append({"batch_id": batch_id, "batch_name": f"测试批次_{name}",
-                        "import_time": timestamp, "original_file": f"test_{name}.xlsx",
-                        "total_rows": len(records), "valid_rows": len(records),
-                        "status": "imported", "is_test": False})
-                    save_metadata(metadata)
-
-                    st.success(f"✅ 测试数据已正式导入系统！批次号: **{batch_id}**")
-                    st.info("🎯 现在可以前往「阈值评估」模块对该批次进行评估，然后在「分析交互」中查看图表。")
-                    st.balloons()
-                except Exception as e:
-                    st.error(f"❌ 导入失败: {str(e)}")
-
-        st.divider()
-
-        st.markdown("##### 选项二：临时评估（不保存到系统）")
-        st.write("仅在当前页面展示评估结果，不保存到数据总库。")
-        if st.button("🔍 触发临时评估", type="secondary", use_container_width=True, key="btn_temp_eval"):
-            with st.spinner("⏳ 正在进行临时评估..."):
-                try:
-                    records = df.to_dict("records")
-                    groups = defaultdict(list)
-                    for rec in records:
-                        groups[(rec.get("时期", "未知"), rec.get("指标", "未知"))].append({"record": rec, "value": rec.get("数值", 0)})
-
-                    t_qualified, t_unqualified, t_phy, t_stat = [], [], 0, 0
-                    for (period, indicator), items in sorted(groups.items()):
-                        phy_passed, phy_failed = [], []
-                        for it in items:
-                            rec, val = it["record"], it["value"]
-                            if not isinstance(val, (int, float)):
-                                try: val = float(val)
-                                except: continue
-                            ok, reason, _ = check_physical_limit(rec.get("时期", ""), rec.get("维度", ""), rec.get("指标", ""), val)
-                            if ok: phy_passed.append({"record": rec, "value": val})
-                            else: phy_failed.append({"record": rec}); t_phy += 1
-
-                        if len(phy_passed) >= 5:
-                            vals = [p["value"] for p in phy_passed]
-                            anomalies, _, _ = detect_statistical_anomaly(vals)
-                            for i, p in enumerate(phy_passed):
-                                if anomalies[i]: t_unqualified.append({**p["record"], "_reason": "统计异常"}); t_stat += 1
-                                else: t_qualified.append(p["record"])
-                        else:
-                            for p in phy_passed: t_qualified.append(p["record"])
-                        for f in phy_failed: t_unqualified.append({**f["record"], "_reason": "物理越限"})
-
-                    total_t = len(records)
-                    rate = round(len(t_qualified)/total_t*100, 1) if total_t else 0
-
-                    st.markdown("##### 📊 临时评估结果")
-                    c1, c2, c3, c4 = st.columns(4)
-                    c1.metric("📊 总数据", f"{total_t} 条")
-                    c2.metric("✅ 合格", f"{len(t_qualified)} 条", f"{rate}%")
-                    c3.metric("❌ 物理越限", f"{t_phy} 条")
-                    c4.metric("⚠️ 统计异常", f"{t_stat} 条")
-
-                    st.info("💡 此为临时结果，未保存。如需图表分析，请使用「选项一：正式导入系统」。")
-                except Exception as e:
-                    st.error(f"❌ 临时评估失败: {str(e)}")
+        st.info("💡 以上为临时评估结果，退出测试数据页面或刷新后自动清理。如需保存，请使用「数据导入」模块正式上传。")
 
 # ============================================================
-# 模块5：数据总库 - 上下布局
+# 模块5：数据总库 - 下设三个子栏 + 原文件下载
 # ============================================================
-
 def page_database():
     st.markdown('<div class="main-title">🗄️ 数据总库</div>', unsafe_allow_html=True)
-    st.markdown('<div class="hint-box">管理所有正式批次，支持汇总统计图表和批量 ZIP 导出。</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">批次管理 | 汇总统计 | 数据导出</div>', unsafe_allow_html=True)
 
-    st.divider()
+    m = load_metadata()
+    fb = [b for b in m.get("batches",[]) if not b.get("is_test",False)]
 
-    tab_list, tab_charts, tab_export = st.tabs(["📋 批次列表", "📈 汇总图表", "📦 数据导出"])
+    # 侧边栏子栏
+    st.sidebar.divider()
+    st.sidebar.markdown("<p style='color:#e8f5e9; font-size:14px; font-weight:600;'>🗄️ 总库子栏</p>", unsafe_allow_html=True)
+    sub = st.sidebar.radio("", ["📋 批次列表", "📈 汇总图表", "📦 数据导出"], label_visibility="collapsed")
 
-    # ========== 批次列表 ==========
-    with tab_list:
-        metadata = load_metadata()
-        formal_batches = [b for b in metadata.get("batches", []) if not b.get("is_test", False)]
-        if not formal_batches: st.info("暂无正式批次"); return
-
-        st.write(f"共 **{len(formal_batches)}** 个正式批次")
-        st.divider()
-
-        for b in formal_batches:
+    if sub == "📋 批次列表":
+        st.markdown("<div class='section-title'>📋 批次列表</div>", unsafe_allow_html=True)
+        if not fb: st.info("暂无批次"); return
+        st.write(f"共 **{len(fb)}** 个正式批次")
+        for b in fb:
             with st.container():
-                c1, c2, c3, c4, c5 = st.columns([1.5, 2.5, 1, 1, 1])
+                c1,c2,c3,c4,c5,c6 = st.columns([1.2,2,0.8,0.8,0.8,0.8])
                 with c1: st.code(b["batch_id"])
-                with c2: st.write(b.get("original_file", "-"))
-                with c3: st.write(f"{b.get('total_rows', 0)} 条")
-                rate = b.get('pass_rate', '-')
-                with c4: st.write(f"{rate}%" if isinstance(rate, (int, float)) else "-")
+                with c2: st.write(b.get("original_file","-"))
+                with c3: st.write(f"{b.get('total_rows',0)}条")
+                rt = b.get('pass_rate','-')
+                with c4: st.write(f"{rt}%" if isinstance(rt,(int,float)) else "-")
+                # 下载原文件按钮
                 with c5:
-                    if st.button("🗑️ 删除", key=f"del_{b['batch_id']}"):
-                        for d, prefix in [(RAW_DIR, "raw_batch_"), (QUALIFIED_DIR, "qualified_"), (UNQUALIFIED_DIR, "unqualified_")]:
-                            fpath = os.path.join(d, f"{prefix}{b['batch_id']}.json")
-                            if os.path.exists(fpath): os.remove(fpath)
-                        metadata["batches"] = [x for x in metadata["batches"] if x["batch_id"] != b["batch_id"]]
-                        save_metadata(metadata)
-                        st.success(f"批次 {b['batch_id']} 已删除"); st.rerun()
+                    rf = os.path.join(RAW_DIR, f"raw_batch_{b['batch_id']}_export.xlsx")
+                    if os.path.exists(rf):
+                        with open(rf, "rb") as f: st.download_button("⬇️", f, file_name=f"raw_{b['batch_id']}.xlsx", key=f"dl_{b['batch_id']}")
+                    else: st.write("-")
+                with c6:
+                    if st.button("🗑️", key=f"del_{b['batch_id']}"):
+                        for d,pf in [(RAW_DIR,"raw_batch_"),(QUALIFIED_DIR,"qualified_"),(UNQUALIFIED_DIR,"unqualified_")]:
+                            fp = os.path.join(d,f"{pf}{b['batch_id']}.json")
+                            if os.path.exists(fp): os.remove(fp)
+                        m["batches"] = [x for x in m["batches"] if x["batch_id"]!=b["batch_id"]]
+                        save_metadata(m); st.rerun()
             st.divider()
 
-    # ========== 汇总图表 ==========
-    with tab_charts:
-        all_qualified, all_unqualified = [], []
-        for b in formal_batches:
-            q = load_json(os.path.join(QUALIFIED_DIR, f"qualified_{b['batch_id']}.json"))
-            u = load_json(os.path.join(UNQUALIFIED_DIR, f"unqualified_{b['batch_id']}.json"))
-            if q: all_qualified.extend(q.get("data", []))
-            if u: all_unqualified.extend(u.get("data", []))
+    elif sub == "📈 汇总图表":
+        st.markdown("<div class='section-title'>📈 汇总图表</div>", unsafe_allow_html=True)
+        aq, au = [], []
+        for b in fb:
+            q = load_json(os.path.join(QUALIFIED_DIR,f"qualified_{b['batch_id']}.json"))
+            u = load_json(os.path.join(UNQUALIFIED_DIR,f"unqualified_{b['batch_id']}.json"))
+            if q: aq.extend(q.get("data",[]))
+            if u: au.extend(u.get("data",[]))
+        if not aq and not au: st.info("无数据"); return
 
-        if not all_qualified and not all_unqualified: st.info("无汇总数据"); return
-
-        st.markdown('<div class="section-title">时期 + 维度 合格率柱状图</div>', unsafe_allow_html=True)
-        pd_combo_total, pd_combo_q = defaultdict(int), defaultdict(int)
-        for r in all_qualified: key = f"{r.get('时期', '未知')}-{r.get('维度', '未知')}"; pd_combo_total[key] += 1; pd_combo_q[key] += 1
-        for r in all_unqualified: key = f"{r.get('时期', '未知')}-{r.get('维度', '未知')}"; pd_combo_total[key] += 1
-        combos = sorted(pd_combo_total.keys())
-        combo_rates = [round(pd_combo_q.get(c, 0) / pd_combo_total[c] * 100, 1) if pd_combo_total[c] > 0 else 0 for c in combos]
-
-        fig1, ax1 = plt.subplots(figsize=(12, 5))
-        colors = {"环境": "#4caf50", "土壤": "#2196f3", "生长状况": "#ff9800"}
-        bar_colors = [colors.get(c.split("-")[1], "#999") for c in combos]
-        ax1.bar(range(len(combos)), combo_rates, color=bar_colors, alpha=0.75, width=0.6)
-        ax1.set_xticks(range(len(combos))); ax1.set_xticklabels(combos, rotation=45, ha="right", fontsize=9)
-        ax1.set_ylabel("合格率 (%)", fontsize=11); ax1.set_title("时期 + 维度 合格率柱状图", fontsize=14, fontweight="bold")
-        ax1.set_ylim(0, 105); ax1.grid(axis="y", alpha=0.3)
+        # 图表1: 时期+维度合格率
+        ct, cq = defaultdict(int), defaultdict(int)
+        for r in aq: k=f"{r.get('时期','未知')}-{r.get('维度','未知')}"; ct[k]+=1; cq[k]+=1
+        for r in au: k=f"{r.get('时期','未知')}-{r.get('维度','未知')}"; ct[k]+=1
+        cs = sorted(ct.keys()); rs = [round(cq.get(c,0)/ct[c]*100,1) for c in cs]
+        fig,ax = plt.subplots(figsize=(12,4.5))
+        cls = {"环境":"#4caf50","土壤":"#2196f3","生长状况":"#ff9800"}
+        bc = [cls.get(c.split("-")[1],"#999") for c in cs]
+        ax.bar(range(len(cs)), rs, color=bc, alpha=0.75, width=0.5)
+        ax.set_xticks(range(len(cs))); ax.set_xticklabels(cs, rotation=25, ha="right", fontsize=9)
+        ax.set_ylabel("合格率 (%)", fontsize=11); ax.set_title("时期+维度 合格率", fontsize=13, fontweight="bold", pad=10)
+        ax.set_ylim(0,105); ax.grid(axis="y", alpha=0.25, linestyle="--")
         from matplotlib.patches import Patch
-        legend_elements = [Patch(facecolor=colors[k], label=k) for k in colors]
-        ax1.legend(handles=legend_elements, fontsize=10)
-        plt.tight_layout(); st.pyplot(fig1, use_container_width=True)
+        ax.legend(handles=[Patch(facecolor=cls[k], label=k) for k in cls], fontsize=9)
+        plt.tight_layout(pad=2.0); st.pyplot(fig, use_container_width=True)
 
-        st.divider()
-        st.markdown('<div class="section-title">时期 + 维度 数据量堆积柱状图</div>', unsafe_allow_html=True)
-        pd_vol = defaultdict(lambda: defaultdict(int))
-        for r in all_qualified + all_unqualified:
-            pd_vol[r.get("时期", "未知")][r.get("维度", "未知")] += 1
-        periods_v = sorted(set(r.get("时期", "") for r in all_qualified + all_unqualified if r.get("时期")))
-        dims_v = ["环境", "土壤", "生长状况"]
-        fig2, ax2 = plt.subplots(figsize=(10, 5))
-        bottom = [0] * len(periods_v)
-        for dim in dims_v:
-            vals = [pd_vol[p].get(dim, 0) for p in periods_v]
-            ax2.bar(periods_v, vals, bottom=bottom, label=dim, color=colors.get(dim, "#999"), alpha=0.75, width=0.6)
-            bottom = [b + v for b, v in zip(bottom, vals)]
-        ax2.set_ylabel("数据条数", fontsize=11); ax2.set_title("时期 + 维度 数据量堆积柱状图", fontsize=14, fontweight="bold")
-        ax2.legend(fontsize=10); ax2.grid(axis="y", alpha=0.3)
-        plt.tight_layout(); st.pyplot(fig2, use_container_width=True)
+        # 图表2: 堆积柱状图
+        vl = defaultdict(lambda: defaultdict(int))
+        for r in aq+au: vl[r.get("时期","未知")][r.get("维度","未知")]+=1
+        pv = sorted(set(r.get("时期","") for r in aq+au if r.get("时期"))); dv = ["环境","土壤","生长状况"]
+        fig2,ax2 = plt.subplots(figsize=(10,4.5))
+        bot = [0]*len(pv)
+        for d in dv:
+            vs = [vl[p].get(d,0) for p in pv]
+            ax2.bar(pv, vs, bottom=bot, label=d, color=cls.get(d,"#999"), alpha=0.75, width=0.5)
+            bot = [a+v for a,v in zip(bot,vs)]
+        ax2.set_ylabel("数据条数", fontsize=11); ax2.set_title("时期+维度 数据量堆积", fontsize=13, fontweight="bold", pad=10)
+        ax2.legend(fontsize=9); ax2.grid(axis="y", alpha=0.25, linestyle="--")
+        plt.tight_layout(pad=2.0); st.pyplot(fig2, use_container_width=True)
 
-        st.divider()
-        st.markdown('<div class="section-title">总体合格率趋势（按批次导入时间）</div>', unsafe_allow_html=True)
-        formal_batches_sorted = sorted(formal_batches, key=lambda x: x.get("import_time", ""))
-        batch_labels = [f"{b['batch_id']}" for b in formal_batches_sorted]
-        batch_rates = [b.get("pass_rate", 0) for b in formal_batches_sorted]
-        fig3, ax3 = plt.subplots(figsize=(10, 5))
-        ax3.plot(range(len(batch_labels)), batch_rates, color="#4caf50", marker="o", linewidth=2.5, markersize=8)
-        ax3.set_xticks(range(len(batch_labels))); ax3.set_xticklabels(batch_labels, fontsize=10)
-        ax3.set_ylabel("合格率 (%)", fontsize=11); ax3.set_title("总体合格率趋势（按批次导入时间）", fontsize=14, fontweight="bold")
-        ax3.set_ylim(0, 105); ax3.grid(alpha=0.3)
-        for i, r in enumerate(batch_rates): ax3.text(i, r + 2, f"{r}%", ha="center", fontsize=9, fontweight="bold")
-        plt.tight_layout(); st.pyplot(fig3, use_container_width=True)
+        # 图表3: 合格率趋势
+        fbs = sorted(fb, key=lambda x:x.get("import_time",""))
+        lbs = [b["batch_id"] for b in fbs]; rts = [b.get("pass_rate",0) for b in fbs]
+        fig3,ax3 = plt.subplots(figsize=(10,4.5))
+        ax3.plot(range(len(lbs)), rts, color="#4caf50", marker="o", linewidth=2.2, markersize=7)
+        ax3.set_xticks(range(len(lbs))); ax3.set_xticklabels(lbs, fontsize=9)
+        ax3.set_ylabel("合格率 (%)", fontsize=11); ax3.set_title("总体合格率趋势", fontsize=13, fontweight="bold", pad=10)
+        ax3.set_ylim(0,105); ax3.grid(alpha=0.25, linestyle="--")
+        for i,rv in enumerate(rts): ax3.text(i, rv+2.5, f"{rv}%", ha="center", fontsize=8, fontweight="bold")
+        plt.tight_layout(pad=2.0); st.pyplot(fig3, use_container_width=True)
 
-    # ========== 数据导出 ==========
-    with tab_export:
-        if st.button("📦 导出全部批次数据（ZIP）", type="primary", use_container_width=True):
-            with st.spinner("⏳ 正在打包数据..."):
-                zip_path = os.path.join(DATA_DIR, "all_batches_export.zip")
-                with zipfile.ZipFile(zip_path, "w") as zf:
-                    for b in formal_batches:
+    elif sub == "📦 数据导出":
+        st.markdown("<div class='section-title'>📦 数据导出</div>", unsafe_allow_html=True)
+        if st.button("📦 导出全部批次(ZIP)", type="primary"):
+            with st.spinner("打包中..."):
+                zp = os.path.join(DATA_DIR, "all_batches.zip")
+                with zipfile.ZipFile(zp, "w") as zf:
+                    for b in fb:
                         bid = b["batch_id"]
-                        for d, prefix in [(RAW_DIR, "raw_batch_"), (QUALIFIED_DIR, "qualified_"), (UNQUALIFIED_DIR, "unqualified_")]:
-                            fpath = os.path.join(d, f"{prefix}{bid}.json")
-                            if os.path.exists(fpath):
-                                zf.write(fpath, f"{bid}/{prefix}{bid}.json")
-                with open(zip_path, "rb") as f:
-                    st.download_button("⬇️ 下载 ZIP", f, file_name="all_batches_export.zip", mime="application/zip")
+                        for d,pf in [(RAW_DIR,"raw_batch_"),(QUALIFIED_DIR,"qualified_"),(UNQUALIFIED_DIR,"unqualified_")]:
+                            fp = os.path.join(d,f"{pf}{bid}.json")
+                            if os.path.exists(fp): zf.write(fp, f"{bid}/{pf}{bid}.json")
+                with open(zp, "rb") as f: st.download_button("⬇️ 下载ZIP", f, file_name="all_batches.zip")
 
 # ============================================================
 # 主入口
 # ============================================================
+st.markdown('<div class="main-title">🌷 百合生长模型数据监测智能体平台</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">低代码 · 多智能体协同 · 自适应统计异常检测</div>', unsafe_allow_html=True)
+st.divider()
 
-def main():
-    st.markdown('<div class="main-title" style="text-align:center; padding:12px 0;">🌷 百合生长模型数据监测智能体平台</div>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align:center; color:#689f38; margin:0 0 16px 0;">低代码 · 多智能体协同 · 自适应统计异常检测</p>', unsafe_allow_html=True)
-    st.divider()
+page = sidebar_nav()
 
-    page = sidebar_nav()
+# 页面切换时清理测试数据临时状态
+if page != "test" and st.session_state.get("test_result"):
+    st.session_state.test_result = None
 
-    if page == "import": page_import()
-    elif page == "evaluate": page_evaluate()
-    elif page == "analyze": page_analyze()
-    elif page == "test": page_test()
-    elif page == "database": page_database()
-
-main()
+if page == "import": page_import()
+elif page == "evaluate": page_evaluate()
+elif page == "analyze": page_analyze()
+elif page == "test": page_test()
+elif page == "database": page_database()
