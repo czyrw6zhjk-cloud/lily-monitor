@@ -1,10 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-百合生长模型数据监测智能体平台 (Streamlit 版)
-功能：数据导入 | 阈值评估 | 分析交互 | 测试数据 | 数据总库
-本地启动：streamlit run app.py
-"""
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -19,10 +13,6 @@ import zipfile
 from datetime import datetime, timedelta
 from collections import defaultdict
 from scipy import stats
-
-# ============================================================
-# 全局路径配置
-# ============================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_DIR = os.path.join(BASE_DIR, "config")
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -35,12 +25,12 @@ TEST_DIR = os.path.join(DATA_DIR, "test")
 for d in [RAW_DIR, QUALIFIED_DIR, UNQUALIFIED_DIR, METADATA_DIR, TEST_DIR]:
     os.makedirs(d, exist_ok=True)
 
-# 加载物理极限表
+
 PHYSICAL_LIMITS_PATH = os.path.join(CONFIG_DIR, "physical_limits.json")
 with open(PHYSICAL_LIMITS_PATH, "r", encoding="utf-8") as f:
     PHYSICAL_LIMITS = json.load(f)
 
-# Streamlit 页面配置
+
 st.set_page_config(
     page_title="百合生长模型数据监测智能体平台",
     page_icon="🌷",
@@ -48,9 +38,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ============================================================
-# CSS 样式
-# ============================================================
+
 st.markdown("""
 <style>
     .main-header { font-size: 28px; font-weight: 700; color: #2e7d32; margin-bottom: 8px; }
@@ -66,9 +54,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ============================================================
-# 工具函数
-# ============================================================
+
 
 def get_next_batch_id():
     meta_path = os.path.join(METADATA_DIR, "batch_metadata.json")
@@ -102,9 +88,6 @@ def load_json(filepath):
             return json.load(f)
     return None
 
-# ============================================================
-# 智能列名匹配配置
-# ============================================================
 
 COLUMN_MAPPING = {
     "时期": {"required": True, "keywords": ["时期", "生长时期", "阶段", "生长期", "period", "stage", "phase"]},
@@ -165,9 +148,6 @@ def validate_dimension_value(value):
             if kw in v or v in kw: return True, sd
     return False, f"无法识别的维度: {v}"
 
-# ============================================================
-# 物理极值判断
-# ============================================================
 
 def check_physical_limit(period, dimension, indicator, value):
     period_data = PHYSICAL_LIMITS.get("limits", {}).get(period, {})
@@ -184,9 +164,6 @@ def check_physical_limit(period, dimension, indicator, value):
     if max_v is not None and value > max_v: return False, f"物理越限: {value} > 上限({max_v})", limit_info
     return True, "物理合格", limit_info
 
-# ============================================================
-# 自适应统计异常检测
-# ============================================================
 
 def detect_statistical_anomaly(values):
     n = len(values)
@@ -212,9 +189,6 @@ def detect_statistical_anomaly(values):
             "lower_bound": round(float(lb), 4), "upper_bound": round(float(ub), 4),
             "n": n, "anomaly_count": sum(anomalies)}
 
-# ============================================================
-# 侧边栏导航
-# ============================================================
 
 def sidebar_nav():
     st.sidebar.markdown('<p style="color:#e8f5e9; font-size:22px; font-weight:700;">🌷 百合监测平台</p>', unsafe_allow_html=True)
@@ -232,9 +206,6 @@ def sidebar_nav():
     st.sidebar.markdown('<p style="color:rgba(232,245,233,0.7); font-size:12px;">百合生长模型数据监测智能体平台 v1.0</p>', unsafe_allow_html=True)
     return selected
 
-# ============================================================
-# 模块1：数据导入
-# ============================================================
 
 def page_import():
     st.markdown('<div class="main-header">📥 数据导入智能体</div>', unsafe_allow_html=True)
@@ -261,18 +232,18 @@ def page_import():
                 if total > 5000:
                     st.error(f"❌ 数据行数 {total} 超过上限 5000 行，请分批导入"); return
 
-                # 列名匹配
+               
                 col_map = smart_column_match(list(df.columns))
                 missing = [k for k, v in col_map.items() if COLUMN_MAPPING[k]["required"] and v is None]
                 if missing:
                     matched = "\n".join([f"{'✅' if v else '❌'} {k}: {v or '未匹配'}" for k, v in col_map.items()])
                     st.error(f"❌ 缺少必填列: {', '.join(missing)}\n\n匹配结果:\n{matched}"); return
 
-                # 重命名
+           
                 rev_map = {v: k for k, v in col_map.items() if v}
                 df_renamed = df.rename(columns=rev_map)
 
-                # 逐行校验
+                
                 valid_rows, error_details = [], []
                 for idx, row in df_renamed.iterrows():
                     errors = []
@@ -299,7 +270,7 @@ def page_import():
                 if not valid_rows:
                     st.error(f"❌ 全部 {total} 行均无效"); return
 
-                # 生成批次号并保存
+               
                 batch_id = get_next_batch_id()
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 raw_data = {"batch_id": batch_id, "import_time": timestamp,
@@ -316,7 +287,7 @@ def page_import():
                     "status": "imported", "is_test": False})
                 save_metadata(metadata)
 
-                # 导入报告
+         
                 pass_rate = len(valid_rows) / total * 100
                 col_match_report = "\n".join([f"{'✅' if v else '❌'} {k}: '{v}'" for k, v in col_map.items()])
                 st.markdown(f'<div class="info-box">✅ <b>导入成功！</b> 批次号: <code>{batch_id}</code> | 总行数: {total} | 有效: {len(valid_rows)} | 错误: {len(error_details)} | 合格率: {pass_rate:.1f}%</div>', unsafe_allow_html=True)
@@ -326,12 +297,12 @@ def page_import():
                     with st.expander(f"⚠️ 错误行详情 ({len(error_details)} 条)"):
                         st.dataframe(pd.DataFrame(error_details), use_container_width=True)
 
-                # 预览
+         
                 st.markdown('<div class="sub-header">数据预览（前10行）</div>', unsafe_allow_html=True)
                 preview_df = pd.DataFrame(valid_rows[:10])
                 st.dataframe(preview_df, use_container_width=True)
 
-                # 下载按钮
+          
                 export_df = pd.DataFrame(valid_rows)
                 export_path = os.path.join(RAW_DIR, f"raw_batch_{batch_id}_export.xlsx")
                 export_df.to_excel(export_path, index=False)
@@ -342,9 +313,6 @@ def page_import():
             except Exception as e:
                 st.error(f"❌ 导入异常: {str(e)}")
 
-# ============================================================
-# 模块2：阈值评估
-# ============================================================
 
 def page_evaluate():
     st.markdown('<div class="main-header">🔍 阈值评估与数据分流智能体</div>', unsafe_allow_html=True)
@@ -375,7 +343,7 @@ def page_evaluate():
                     records = raw_data.get("data", [])
                     if not records: st.error("无数据"); return
 
-                    # 按(时期+指标)分组
+                  
                     groups = defaultdict(list)
                     for idx, rec in enumerate(records):
                         groups[(rec.get("时期", "未知"), rec.get("指标", "未知"))].append({"idx": idx, "record": rec})
@@ -387,7 +355,7 @@ def page_evaluate():
                     for (period, indicator), items in sorted(groups.items()):
                         values = [it["record"]["数值"] for it in items if isinstance(it["record"].get("数值"), (int, float))]
 
-                        # 物理判断
+                       
                         phy_passed, phy_failed = [], []
                         for it in items:
                             rec, val = it["record"], it["record"].get("数值")
@@ -400,7 +368,7 @@ def page_evaluate():
                             if ok: phy_passed.append({"record": rec, "value": val})
                             else: phy_failed.append({"record": rec, "reason": reason, "limit": limit_info}); total_phy_fail += 1
 
-                        # 统计检测
+                       
                         stat_info = {"method": "跳过", "note": "样本量不足"}
                         if len(phy_passed) >= 5:
                             passed_vals = [p["value"] for p in phy_passed]
@@ -422,7 +390,7 @@ def page_evaluate():
                             "method": stat_info.get("method", "跳过"), "stat_info": stat_info,
                             "limit": limit_info if phy_failed else (phy_passed[0]["record"] if phy_passed else {})})
 
-                    # 保存
+                 
                     save_json({"batch_id": batch_id, "count": len(qualified_records), "data": qualified_records},
                         os.path.join(QUALIFIED_DIR, f"qualified_{batch_id}.json"))
                     save_json({"batch_id": batch_id, "count": len(unqualified_records), "data": unqualified_records},
@@ -436,7 +404,7 @@ def page_evaluate():
                             b["pass_rate"] = round(total_pass / len(records) * 100, 1) if records else 0
                     save_metadata(metadata)
 
-                    # 结果展示
+                    
                     total = len(records)
                     rate = round(total_pass / total * 100, 1) if total else 0
                     c1, c2, c3, c4 = st.columns(4)
@@ -445,7 +413,7 @@ def page_evaluate():
                     c3.markdown(f'<div class="metric-card"><div class="metric-value" style="color:#f44336;">{total_phy_fail}</div><div class="metric-label">物理越限</div></div>', unsafe_allow_html=True)
                     c4.markdown(f'<div class="metric-card"><div class="metric-value" style="color:#ff9800;">{total_stat_fail}</div><div class="metric-label">统计异常</div></div>', unsafe_allow_html=True)
 
-                    # 分组卡片
+                   
                     st.markdown('<div class="sub-header">分组评估详情</div>', unsafe_allow_html=True)
                     for g in group_results:
                         with st.expander(f"{g['period']} - {g['indicator']} (维度:{g['dimension']}, 总{g['total']}条, 物理越限{g['phy_fail']})"):
@@ -465,9 +433,7 @@ def page_evaluate():
                 except Exception as e:
                     st.error(f"❌ 评估异常: {str(e)}")
 
-# ============================================================
-# 模块3：分析交互
-# ============================================================
+
 
 @st.cache_data(show_spinner=False)
 def cached_dim_rate(batch_id):
@@ -532,11 +498,11 @@ def page_analyze():
     selected_label = st.selectbox("选择批次", list(batch_options.keys()), key="anal_batch")
     batch_id = batch_options[selected_label]
 
-    # Tab 1: 合格率仪表
+  
     st.markdown('<div class="sub-header">合格率仪表</div>', unsafe_allow_html=True)
     c1, c2 = st.columns(2)
 
-    # 维度合格率图
+    
     dim_data = cached_dim_rate(batch_id)
     if dim_data:
         fig, ax = plt.subplots(figsize=(6, 3.5))
@@ -550,7 +516,7 @@ def page_analyze():
         plt.tight_layout()
         with c1: st.pyplot(fig, use_container_width=True)
 
-    # 时期合格率图
+
     period_data = cached_period_rate(batch_id)
     if period_data:
         fig2, ax2 = plt.subplots(figsize=(6, 3.5))
@@ -564,7 +530,7 @@ def page_analyze():
         plt.tight_layout()
         with c2: st.pyplot(fig2, use_container_width=True)
 
-    # Tab 2: 波动图表（延迟加载）
+  
     st.markdown('<div class="sub-header">波动图表（按钮触发）</div>', unsafe_allow_html=True)
     q_file = os.path.join(QUALIFIED_DIR, f"qualified_{batch_id}.json")
     if os.path.exists(q_file):
@@ -612,7 +578,7 @@ def page_analyze():
             else:
                 st.warning(f"{sel_period}-{sel_indicator} 无合格数据")
 
-    # Tab 3: 异常数据集合
+
     st.markdown('<div class="sub-header">异常数据集合</div>', unsafe_allow_html=True)
     uq_file = os.path.join(UNQUALIFIED_DIR, f"unqualified_{batch_id}.json")
     if os.path.exists(uq_file):
@@ -628,7 +594,7 @@ def page_analyze():
             elif filter_reason == "统计异常(z-score)": filtered = [r for r in uq_data if "z-score" in str(r.get("_fail_type", ""))]
             elif filter_reason == "统计异常(IQR)": filtered = [r for r in uq_data if "IQR" in str(r.get("_fail_type", ""))]
 
-        # 分页显示（每页30行）
+        
         page_size = 30
         total_pages = max(1, (len(filtered) + page_size - 1) // page_size)
         page_num = st.number_input("页码", min_value=1, max_value=total_pages, value=1, step=1, key="uq_page")
@@ -644,7 +610,7 @@ def page_analyze():
         st.dataframe(df_uq, use_container_width=True)
         st.caption(f"共 {len(filtered)} 条 | 第 {page_num}/{total_pages} 页 | 显示 {start_idx+1}-{end_idx} 条")
 
-        # 导出CSV
+        
         export_df = pd.DataFrame([{
             "时期": r.get("时期", ""), "维度": r.get("维度", ""), "指标": r.get("指标", ""),
             "数值": r.get("数值", ""), "单位": r.get("单位", ""), "时间": r.get("时间", ""),
@@ -655,9 +621,7 @@ def page_analyze():
     else:
         st.info("该批次无异常数据")
 
-# ============================================================
-# 模块4：测试数据
-# ============================================================
+
 
 def generate_test_data(name, total, normal_ratio, phy_ratio, stat_ratio, period_cfg, start_date, fmt):
     """生成测试数据"""
@@ -679,14 +643,14 @@ def generate_test_data(name, total, normal_ratio, phy_ratio, stat_ratio, period_
         if not cfg_list: continue
         period, dim, ind, unit, pmin, pmax = cfg_list[i % len(cfg_list)]
 
-        # 决定数据类型
+
         r = np.random.random()
         if r < normal_ratio:
             val = np.random.uniform(pmin + (pmax - pmin) * 0.2, pmax - (pmax - pmin) * 0.2)
         elif r < normal_ratio + phy_ratio:
             val = np.random.choice([pmin - np.random.uniform(5, 20), pmax + np.random.uniform(5, 20)])
         else:
-            # 统计异常：根据背景分布生成离群点
+           
             bg = [np.random.uniform(pmin + (pmax - pmin) * 0.2, pmax - (pmax - pmin) * 0.2) for _ in range(10)]
             if len(bg) >= 5 and abs(stats.skew(bg)) < 1:
                 mu_bg, s_bg = np.mean(bg), np.std(bg)
@@ -709,7 +673,7 @@ def page_test():
     st.markdown('<div class="main-header">🧪 测试数据智能体</div>', unsafe_allow_html=True)
     st.markdown("自定义生成模拟数据，支持设置各类型比例、时期分布。生成后可下载或临时触发评估（不存入数据总库）。")
 
-    # 加载localStorage偏好（通过session_state模拟）
+   
     if "test_cfg" not in st.session_state:
         st.session_state.test_cfg = {"name": "test_001", "total": 100, "normal": 0.7, "phy": 0.15, "stat": 0.15,
             "period": '{"萌芽期":0.25,"展叶期":0.25,"孕蕾期":0.25,"开花期":0.25}', "start": datetime.now().strftime("%Y-%m-%d")}
@@ -753,7 +717,7 @@ def page_test():
         if "last_test_df" in st.session_state:
             st.dataframe(st.session_state.last_test_df.head(20), use_container_width=True)
 
-            # 触发评估（临时，不保存到总库）
+          
             if st.button("🔍 触发临时评估", type="secondary", use_container_width=True):
                 with st.spinner("正在进行临时评估..."):
                     try:
@@ -790,9 +754,7 @@ def page_test():
                     except Exception as e:
                         st.error(f"❌ 临时评估失败: {str(e)}")
 
-# ============================================================
-# 模块5：数据总库
-# ============================================================
+
 
 def page_database():
     st.markdown('<div class="main-header">🗄️ 数据总库</div>', unsafe_allow_html=True)
@@ -800,7 +762,7 @@ def page_database():
 
     tab_list, tab_charts, tab_export = st.tabs(["批次列表", "汇总图表", "数据导出"])
 
-    # 5.1 批次列表
+   
     with tab_list:
         metadata = load_metadata()
         formal_batches = [b for b in metadata.get("batches", []) if not b.get("is_test", False)]
@@ -824,7 +786,7 @@ def page_database():
                         save_metadata(metadata)
                         st.success(f"批次 {b['batch_id']} 已删除"); st.rerun()
 
-    # 5.2 汇总图表
+  
     with tab_charts:
         # 加载所有保留批次的合格数据
         all_qualified, all_unqualified = [], []
@@ -836,7 +798,7 @@ def page_database():
 
         if not all_qualified and not all_unqualified: st.info("无汇总数据"); return
 
-        # 图表1：时期+维度 合格率柱状图
+        
         pd_combo_total, pd_combo_q = defaultdict(int), defaultdict(int)
         for r in all_qualified: key = f"{r.get('时期', '未知')}-{r.get('维度', '未知')}"; pd_combo_total[key] += 1; pd_combo_q[key] += 1
         for r in all_unqualified: key = f"{r.get('时期', '未知')}-{r.get('维度', '未知')}"; pd_combo_total[key] += 1
@@ -855,7 +817,7 @@ def page_database():
         ax1.legend(handles=legend_elements, fontsize=9)
         plt.tight_layout(); st.pyplot(fig1, use_container_width=True)
 
-        # 图表2：时期+维度 数据量堆积柱状图
+       
         pd_vol = defaultdict(lambda: defaultdict(int))
         for r in all_qualified + all_unqualified:
             pd_vol[r.get("时期", "未知")][r.get("维度", "未知")] += 1
@@ -871,7 +833,7 @@ def page_database():
         ax2.legend(fontsize=9); ax2.grid(axis="y", alpha=0.3)
         plt.tight_layout(); st.pyplot(fig2, use_container_width=True)
 
-        # 图表3：总体合格率趋势（按批次时间）
+      
         formal_batches_sorted = sorted(formal_batches, key=lambda x: x.get("import_time", ""))
         batch_labels = [f"{b['batch_id']}" for b in formal_batches_sorted]
         batch_rates = [b.get("pass_rate", 0) for b in formal_batches_sorted]
@@ -883,7 +845,7 @@ def page_database():
         for i, r in enumerate(batch_rates): ax3.text(i, r + 2, f"{r}%", ha="center", fontsize=8)
         plt.tight_layout(); st.pyplot(fig3, use_container_width=True)
 
-    # 5.3 数据导出
+    
     with tab_export:
         if st.button("📦 导出全部批次数据（ZIP）", type="primary", use_container_width=True):
             with st.spinner("正在打包数据..."):
@@ -898,9 +860,6 @@ def page_database():
                 with open(zip_path, "rb") as f:
                     st.download_button("⬇️ 下载 ZIP", f, file_name="all_batches_export.zip", mime="application/zip")
 
-# ============================================================
-# 主入口
-# ============================================================
 
 def main():
     st.markdown('<div class="main-header">🌷 百合生长模型数据监测智能体平台</div>', unsafe_allow_html=True)
