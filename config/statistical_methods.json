@@ -1,0 +1,75 @@
+{
+  "百合温室统计检测配置": {
+    "昼温": {
+      "method": "iqr",
+      "k": 1.5,
+      "distribution": "normal",
+      "unit": "°C",
+      "period_specific": true
+    },
+    "夜温": {
+      "method": "zscore",
+      "threshold": 3,
+      "distribution": "normal",
+      "unit": "°C",
+      "period_specific": true
+    },
+    "湿度": {
+      "method": "iqr",
+      "k": 1.5,
+      "distribution": "skewed",
+      "unit": "%",
+      "period_specific": true
+    },
+    "光照强度": {
+      "method": "isolation_forest",
+      "contamination": 0.05,
+      "distribution": "bimodal",
+      "unit": "lux",
+      "period_specific": false,
+      "note": "需先按天气分群再检测"
+    },
+    "pH值": {
+      "method": "zscore",
+      "threshold": 3,
+      "distribution": "normal",
+      "unit": "",
+      "period_specific": false
+    },
+    "EC值": {
+      "method": "iqr",
+      "k": 1.5,
+      "distribution": "skewed",
+      "unit": "mS/cm",
+      "period_specific": true
+    },
+    "株高": {
+      "method": "iqr",
+      "k": 1.5,
+      "distribution": "skewed",
+      "unit": "cm",
+      "period_specific": true
+    },
+    "茎粗": {
+      "method": "iqr",
+      "k": 1.5,
+      "distribution": "normal",
+      "unit": "cm",
+      "period_specific": true
+    },
+    "叶长": {
+      "method": "iqr",
+      "k": 1.5,
+      "distribution": "skewed",
+      "unit": "cm",
+      "period_specific": true
+    },
+    "叶宽": {
+      "method": "iqr",
+      "k": 1.5,
+      "distribution": "skewed",
+      "unit": "cm",
+      "period_specific": true
+    }
+  }
+}
