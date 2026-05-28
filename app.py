@@ -246,6 +246,12 @@ def detect_statistical_anomaly(values, indicator=""):
 # 核心评估逻辑（增强版：联合异常检测）
 # ============================================================
 def run_evaluation(records, batch_id="temp"):
+    """
+    阈值评估：
+    1. 所有数据先经过物理极值判断
+    2. 物理正常的数据进入统计异常检测
+    3. 高温高湿看板提示（不参与分流）
+    """
     # 按时期+指标分组
     groups = defaultdict(list)
     for idx, rec in enumerate(records):
@@ -255,7 +261,7 @@ def run_evaluation(records, batch_id="temp"):
     idx_phy_ok = {}       # idx -> bool
     idx_phy_reason = {}   # idx -> str
     idx_stat_anomaly = {} # idx -> bool
-    idx_stat_method = {}  # idx -> str (检测方法名)
+    idx_stat_method = {}  # idx -> str
     idx_limit = {}        # idx -> dict
     
     group_results = []
@@ -271,7 +277,9 @@ def run_evaluation(records, batch_id="temp"):
             if not isinstance(val, (int, float)):
                 try: val = float(val)
                 except: continue
-            ok, reason, limit_info = check_physical_limit(rec.get("时期", ""), rec.get("维度", ""), rec.get("指标", ""), val)
+            ok, reason, limit_info = check_physical_limit(
+                rec.get("时期", ""), rec.get("维度", ""), rec.get("指标", ""), val
+            )
             idx_limit[idx] = limit_info
             if ok:
                 phy_passed.append({"record": rec, "value": val, "idx": idx})
@@ -282,10 +290,10 @@ def run_evaluation(records, batch_id="temp"):
                 idx_phy_reason[idx] = reason
                 total_phy_fail += 1
         
-        # 统计检测
-        stat_info = {"method": "跳过", "note": "样本不足"}
+        # 统计检测（仅对物理正常的数据）
+        stat_info = {"method": "样本不足", "note": "n<<5，跳过统计检测"}
         anomalies = [False] * len(phy_passed)
-        method_name = "跳过"
+        method_name = "样本不足"
         
         if len(phy_passed) >= 5:
             passed_vals = [p["value"] for p in phy_passed]
@@ -294,13 +302,12 @@ def run_evaluation(records, batch_id="temp"):
                 idx = p["idx"]
                 idx_stat_anomaly[idx] = anomalies[i]
                 idx_stat_method[idx] = method_name
-        
         else:
             for p in phy_passed:
                 idx_stat_anomaly[p["idx"]] = False
-                idx_stat_method[p["idx"]] = "跳过"
+                idx_stat_method[p["idx"]] = "样本不足"
         
-        # 组装分组记录（使用第一次的 anomalies，避免重复计算）
+        # 组装分组记录
         record_status = []
         for p in phy_passed:
             idx = p["idx"]
@@ -309,28 +316,27 @@ def run_evaluation(records, batch_id="temp"):
         for f in phy_failed:
             record_status.append({**f["record"], "_status": "物理越限", "__idx": f["idx"]})
         
+        # 统计该分组的问题数量
+        phy_fail_count = len(phy_failed)
+        stat_fail_count = sum(1 for r in record_status if r.get("_status") == "统计异常")
+        
         group_results.append({
-            "period": period, "indicator": indicator,
+            "period": period, 
+            "indicator": indicator,
             "dimension": items[0]["record"].get("维度", ""),
-            "total": len(items), "phy_pass": len(phy_passed), "phy_fail": len(phy_failed),
-            "method": stat_info.get("method", "跳过"), "stat_info": stat_info,
+            "total": len(items), 
+            "phy_pass": len(phy_passed), 
+            "phy_fail": phy_fail_count,
+            "stat_fail": stat_fail_count,
+            "method": method_name, 
+            "stat_info": stat_info,
             "limit": limit_info if phy_failed else (phy_passed[0]["record"] if phy_passed else {}),
             "records": [{k: v for k, v in r.items() if not k.startswith("__")} for r in record_status[:50]]
         })
     
-    # 第二轮：联合异常判定（按时间点分组，≥2个指标同时统计异常则提升为联合异常）
-    time_stat_indicators = defaultdict(list)  # time -> [indicators]
-    for idx, rec in enumerate(records):
-        if idx_phy_ok.get(idx, False) and idx_stat_anomaly.get(idx, False):
-            t = rec.get("时间", rec.get("时期", "未知"))
-            time_stat_indicators[t].append(rec.get("指标", "未知"))
-    
-    joint_times = {t for t, inds in time_stat_indicators.items() if len(inds) >= 2}
-    
-    # 最终分流
+    # 最终分流（所有数据都经过物理判断）
     qualified_records, unqualified_records = [], []
     total_stat_fail = 0
-    total_joint_fail = 0
     total_pass = 0
     
     for idx, rec in enumerate(records):
@@ -340,33 +346,62 @@ def run_evaluation(records, batch_id="temp"):
             except: continue
         
         if not idx_phy_ok.get(idx, False):
-            unqualified_records.append({**rec, "_fail_reason": idx_phy_reason.get(idx, "物理越限"),
-                "_fail_type": "物理越限", "_batch_id": batch_id})
+            unqualified_records.append({
+                **rec, 
+                "_fail_reason": idx_phy_reason.get(idx, "物理越限"),
+                "_fail_type": "物理越限", 
+                "_batch_id": batch_id
+            })
             continue
         
-        t = rec.get("时间", rec.get("时期", "未知"))
         is_stat = idx_stat_anomaly.get(idx, False)
-        
-        if t in joint_times and is_stat:
-            unqualified_records.append({**rec, 
-                "_fail_reason": f"联合异常(时间点{t}共{len(time_stat_indicators[t])}个指标统计异常)",
-                "_fail_type": "联合异常", "_batch_id": batch_id})
-            total_joint_fail += 1
-        elif is_stat:
+        if is_stat:
             method_name = idx_stat_method.get(idx, "统计")
-            unqualified_records.append({**rec, "_fail_reason": "统计异常",
-                "_fail_type": f"统计异常({method_name})", "_batch_id": batch_id})
+            unqualified_records.append({
+                **rec, 
+                "_fail_reason": "统计异常",
+                "_fail_type": f"统计异常({method_name})", 
+                "_batch_id": batch_id
+            })
             total_stat_fail += 1
         else:
             qualified_records.append(rec)
             total_pass += 1
     
-    # 修正 group_results 中的 _status（标记联合异常）
-    for g in group_results:
-        for r in g["records"]:
-            t = r.get("时间", r.get("时期", "未知"))
-            if r.get("_status") == "统计异常" and t in joint_times:
-                r["_status"] = "联合异常"
+    # 高温高湿看板提示检测（不参与分流，仅提示）
+    high_temp_high_humidity = []
+    for rec in records:
+        indicator = rec.get("指标", "")
+        val = rec.get("数值")
+        try: val = float(val)
+        except: continue
+        
+        # 检查昼温/环境温度在5-30范围内
+        if indicator in ["昼温", "环境温度"] and 5 <= val <= 30:
+            time_key = rec.get("时间", rec.get("时期", ""))
+            for r2 in records:
+                if r2.get("时间", r2.get("时期", "")) == time_key:
+                    if r2.get("指标", "") in ["湿度", "环境相对湿度"]:
+                        try:
+                            h_val = float(r2.get("数值", 0))
+                            if 85 <= h_val <= 100:
+                                high_temp_high_humidity.append({
+                                    "时间": time_key,
+                                    "时期": rec.get("时期", ""),
+                                    "昼温": val,
+                                    "湿度": h_val
+                                })
+                        except:
+                            pass
+    
+    # 去重
+    seen = set()
+    hthh_unique = []
+    for item in high_temp_high_humidity:
+        key = (item["时间"], item["昼温"], item["湿度"])
+        if key not in seen:
+            seen.add(key)
+            hthh_unique.append(item)
     
     return {
         "qualified": qualified_records,
@@ -375,9 +410,9 @@ def run_evaluation(records, batch_id="temp"):
         "total": len(records),
         "pass": total_pass,
         "phy_fail": total_phy_fail,
-        "stat_fail": total_stat_fail + total_joint_fail,
-        "joint_fail": total_joint_fail,
-        "rate": round(total_pass / len(records) * 100, 1) if records else 0
+        "stat_fail": total_stat_fail,
+        "rate": round(total_pass / len(records) * 100, 1) if records else 0,
+        "high_temp_high_humidity": hthh_unique
     }
 
 # ============================================================
@@ -578,9 +613,12 @@ def page_evaluate():
                 c3.metric("❌ 物理越限", result["phy_fail"])
                 c4.metric("⚠️ 统计异常", result["stat_fail"])
 
-                # ==================== 联合异常告警（新增） ====================
-                if result.get("joint_fail", 0) > 0:
-                    st.error(f"🚨 发现 **{result['joint_fail']}** 条联合异常记录（同一时间点≥2个指标同时统计异常），建议优先人工复核！")
+                # ==================== 高温高湿看板提示（新增） ====================
+                if result.get("high_temp_high_humidity"):
+                    hthh = result["high_temp_high_humidity"]
+                    st.warning(f"🌡️💧 检测到 **{len(hthh)}** 条高温高湿记录（昼温5-30℃且湿度85-100%），灰霉病风险预警")
+                    with st.expander("查看高温高湿明细"):
+                        st.dataframe(pd.DataFrame(hthh), hide_index=True)
                 # ============================================================
 
                 # 分组卡片网格（2列）
@@ -593,17 +631,46 @@ def page_evaluate():
                         g = groups[i+j]
                         with cols[j]:
                             with st.container():
+                                # ==================== 修改：问题统计标签（替换原"跳过"） ====================
+                                # 判定该分组的状态标签
+                                if g['phy_fail'] > 0:
+                                    status_tag = f"{g['phy_fail']}条物理越限"
+                                    tag_class = "tag-warn"
+                                elif g['stat_fail'] > 0:
+                                    status_tag = f"{g['stat_fail']}条统计异常"
+                                    tag_class = "tag-warn"
+                                else:
+                                    status_tag = "全部数据合格"
+                                    tag_class = "tag-ok"
+                                
+                                # 方法标签（样本不足时显示提示）
+                                method_display = g['method']
+                                if method_display == "样本不足":
+                                    method_display = "n<<5未检"
+                                # ===================================================================
+                                
                                 st.markdown(f"""
                                 <div class='card'>
                                     <div class='card-title'>
                                         <span>📋 {g['period']} — {g['dimension']} — {g['indicator']}</span>
-                                        <span><span class='tag'>n={g['total']}</span><span class='tag{' tag-warn' if g['method']=='跳过' else ' tag-ok'}'>{g['method']}</span></span>
+                                        <span><span class='tag'>n={g['total']}</span><span class='tag{tag_class}'>{status_tag}</span><span class='tag' style='background:#e3f2fd;color:#1976d2;'>{method_display}</span></span>
                                     </div>
                                 """, unsafe_allow_html=True)
-                                li = g.get("limit",{})
-                                st.write(f"**物理范围:** [{li.get('min','N/A')}, {li.get('max','N/A')}] {li.get('unit','')}")
+                                
+                                # ==================== 修改：物理范围N/A处理 ====================
+                                li = g.get("limit", {})
+                                min_v = li.get("min")
+                                max_v = li.get("max")
+                                unit_v = li.get("unit", "")
+                                if min_v is None and max_v is None:
+                                    st.write(f"**物理范围:** 未配置物理极限 {unit_v}")
+                                else:
+                                    min_show = min_v if min_v is not None else "无下限"
+                                    max_show = max_v if max_v is not None else "无上限"
+                                    st.write(f"**物理范围:** [{min_show}, {max_show}] {unit_v}")
+                                # ============================================================
+                                
                                 si = g["stat_info"]
-                                # ==================== 增强：支持 MAD / 孤立森林 显示（新增） ====================
                                 if g["method"]=="z-score": 
                                     st.write(f"μ = {si.get('mu')} | σ = {si.get('sigma')} | 3σ = [{si.get('range',[0,0])[0]}, {si.get('range',[0,0])[1]}]")
                                 elif g["method"]=="IQR": 
@@ -614,17 +681,22 @@ def page_evaluate():
                                     st.write(f"孤立森林 | 污染率 = {si.get('contamination')} | 异常数 = {si.get('anomaly')}")
                                 elif g["method"]=="IQR(回退)": 
                                     st.write(f"IQR回退(孤立森林样本不足) | Q1={si.get('Q1')} Q3={si.get('Q3')} | 阈值 = [{si.get('lb')}, {si.get('ub')}]")
+                                elif g["method"]=="样本不足" or g["method"]=="n<<5未检": 
+                                    st.write(f"💡 样本量{n} < 5，仅通过物理极值判断，未进行统计异常检测")
                                 else: 
                                     st.write(f"💡 {si.get('note','')}")
-                                # ================================================================================
+                                
                                 if g["records"]:
                                     with st.expander(f"📑 数据明细（{len(g['records'])} 条）"):
-                                        st.dataframe(pd.DataFrame([{"时期":r.get("时期",""),"维度":r.get("维度",""),"指标":r.get("指标",""),"数值":r.get("数值",""),"状态":r.get("_status","")} for r in g["records"]]), hide_index=True)
+                                        st.dataframe(pd.DataFrame([
+                                            {"时期": r.get("时期",""), "维度": r.get("维度",""), "指标": r.get("指标",""), 
+                                             "数值": r.get("数值",""), "状态": r.get("_status","")} 
+                                            for r in g["records"]
+                                        ]), hide_index=True)
                                 st.markdown("</div>", unsafe_allow_html=True)
 
                 st.success("✅ 评估完成！可前往「分析交互」查看图表。")
             except Exception as e: st.error(f"异常: {e}")
-
 # ============================================================
 # 模块3：分析交互 - 侧边栏下设三个子栏
 # ============================================================
@@ -809,10 +881,13 @@ def page_test():
         c1.metric("总数据", res["total"]); c2.metric("合格", res["pass"], f"{res['rate']}%")
         c3.metric("物理越限", res["phy_fail"]); c4.metric("统计异常", res["stat_fail"])
 
-        # ==================== 联合异常告警（新增） ====================
-        if res.get("joint_fail", 0) > 0:
-            st.error(f"🚨 发现 **{res['joint_fail']}** 条联合异常记录（同一时间点≥2个指标同时统计异常）")
-        # ============================================================
+# ==================== 高温高湿看板提示（新增） ====================
+if res.get("high_temp_high_humidity"):
+    hthh = res["high_temp_high_humidity"]
+    st.warning(f"🌡️💧 检测到 **{len(hthh)}** 条高温高湿记录（昼温5-30℃且湿度85-100%），灰霉病风险预警")
+    with st.expander("查看高温高湿明细"):
+        st.dataframe(pd.DataFrame(hthh), hide_index=True)
+# ============================================================
 
         # 分组卡片
         st.markdown(f"<div class='section-title'>分组详情（{len(res['groups'])} 组）</div>", unsafe_allow_html=True)
@@ -827,7 +902,7 @@ def page_test():
                         <div class='card'>
                             <div class='card-title'>
                                 <span>📋 {g['period']} — {g['dimension']} — {g['indicator']}</span>
-                                <span><span class='tag'>n={g['total']}</span><span class='tag{' tag-warn' if g['method']=='跳过' else ' tag-ok'}'>{g['method']}</span></span>
+                                <span><span class='tag'>n={g['total']}</span><span class='tag{' tag-warn' if g['phy_fail']>0 or g['stat_fail']>0 else ' tag-ok'}'>{f"{g['phy_fail']}条物理越限" if g['phy_fail']>0 else (f"{g['stat_fail']}条统计异常" if g['stat_fail']>0 else "全部数据合格")}</span><span class='tag' style='background:#e3f2fd;color:#1976d2;'>{g['method'] if g['method']!="样本不足" else "n<<5未检"}</span></span>
                             </div>
                         """, unsafe_allow_html=True)
                         li = g.get("limit",{})
