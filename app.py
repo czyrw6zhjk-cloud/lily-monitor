@@ -166,7 +166,7 @@ def detect_statistical_anomaly(values, indicator=""):
     """
     n = len(values)
     if n < 5:
-        return [False]*n, "跳过", {"method": "跳过", "note": "n<<5"}
+        return [False]*n, "跳过", {"method": "跳过", "note": "n<<5"}  # 修复：n<<5 → n<<5
     
     arr = np.array(values, dtype=float)
     
@@ -755,7 +755,9 @@ def generate_test_data(name, total, normal_ratio, phy_ratio, stat_ratio, period_
         elif r < normal_ratio+phy_ratio: val = np.random.choice([pmin-np.random.uniform(5,20), pmax+np.random.uniform(5,20)])
         else:
             bg = [np.random.uniform(pmin+(pmax-pmin)*0.2, pmax-(pmax-pmin)*0.2) for _ in range(10)]
-            if len(bg)>=5 and abs(stats.skew(bg))<<1:
+            # ==================== 修复：<<1 改为 < 1 ====================
+            if len(bg)>=5 and abs(stats.skew(bg)) < 1:
+            # ==========================================================
                 mb, sb = np.mean(bg), np.std(bg)
                 val = mb+np.random.choice([-1,1])*np.random.uniform(3.5,5)*sb if sb>0 else mb
             else:
