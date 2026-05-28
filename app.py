@@ -882,11 +882,11 @@ def page_test():
         c3.metric("物理越限", res["phy_fail"]); c4.metric("统计异常", res["stat_fail"])
 
 # ==================== 高温高湿看板提示（新增） ====================
-if res.get("high_temp_high_humidity"):
-    hthh = res["high_temp_high_humidity"]
-    st.warning(f"🌡️💧 检测到 **{len(hthh)}** 条高温高湿记录（昼温5-30℃且湿度85-100%），灰霉病风险预警")
-    with st.expander("查看高温高湿明细"):
-        st.dataframe(pd.DataFrame(hthh), hide_index=True)
+    if res.get("high_temp_high_humidity"):
+        hthh = res["high_temp_high_humidity"]
+        st.warning(f"🌡️💧 检测到 **{len(hthh)}** 条高温高湿记录（昼温5-30℃且湿度85-100%），灰霉病风险预警")
+        with st.expander("查看高温高湿明细"):
+            st.dataframe(pd.DataFrame(hthh), hide_index=True)
 # ============================================================
 
         # 分组卡片
