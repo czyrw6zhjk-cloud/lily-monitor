@@ -954,15 +954,41 @@ def page_database():
         st.markdown("<div class='section-title'>📦 数据导出</div>", unsafe_allow_html=True)
         if st.button("📦 导出全部合格数据(ZIP)", type="primary"):
             with st.spinner("打包中..."):
+                import tempfile
                 zp = os.path.join(DATA_DIR, "all_qualified.zip")
+                
                 with zipfile.ZipFile(zp, "w") as zf:
                     for b in fb:
                         bid = b["batch_id"]
-                        # 只导出合格数据
+                        # 读取合格JSON数据
                         fp = os.path.join(QUALIFIED_DIR, f"qualified_{bid}.json")
-                        if os.path.exists(fp):
-                            zf.write(fp, f"{bid}/qualified_{bid}.json")
-                with open(zp, "rb") as f: st.download_button("⬇️ 下载ZIP", f, file_name="all_qualified.zip")
+                        if not os.path.exists(fp):
+                            continue
+                        
+                        qd = load_json(fp)
+                        records = qd.get("data", []) if qd else []
+                        if not records:
+                            continue
+                        
+                        # 转为DataFrame并写入临时Excel
+                        df_q = pd.DataFrame(records)
+                        # 清理内部字段，只保留业务数据
+                        drop_cols = [c for c in df_q.columns if c.startswith("_")]
+                        if drop_cols:
+                            df_q = df_q.drop(columns=drop_cols)
+                        
+                        tmp_xlsx = os.path.join(tempfile.gettempdir(), f"qualified_{bid}.xlsx")
+                        df_q.to_excel(tmp_xlsx, index=False, engine="openpyxl")
+                        
+                        # 加入ZIP，按批次分文件夹
+                        zf.write(tmp_xlsx, f"{bid}/qualified_{bid}.xlsx")
+                        
+                        # 删除临时文件
+                        if os.path.exists(tmp_xlsx):
+                            os.remove(tmp_xlsx)
+                
+                with open(zp, "rb") as f:
+                    st.download_button("⬇️ 下载ZIP", f, file_name="all_qualified.zip")
 
 # ============================================================
 # 主入口
