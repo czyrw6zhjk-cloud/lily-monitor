@@ -722,19 +722,42 @@ def cached_period_rate(bid):
 @st.cache_data(show_spinner=False)
 def cached_wave_data(bid, period, indicator):
     qf = os.path.join(QUALIFIED_DIR, f"qualified_{bid}.json")
-    if not os.path.exists(qf): return None
-    with open(qf) as f: rs = json.load(f).get("data",[])
-    fl = [r for r in rs if r.get("时期")==period and r.get("指标")==indicator]
-    if not fl: return None
-    fl.sort(key=lambda x: x.get("时间") or "")
+    if not os.path.exists(qf): 
+        return None
+    with open(qf) as f: 
+        data = json.load(f)
+        if not isinstance(data, dict):
+            return None
+        rs = data.get("data", [])
+    
+    # 防御：只保留字典类型且字段匹配的记录
+    fl = [r for r in rs if isinstance(r, dict) and r.get("时期")==period and r.get("指标")==indicator]
+    if not fl: 
+        return None
+    
+    # 修复：统一转字符串排序，避免 datetime / str / None 混合
+    fl.sort(key=lambda x: str(x.get("时间") or ""))
+    
     pd_ = PHYSICAL_LIMITS.get("limits",{}).get(period,{})
     li = None
     for dn, items in pd_.items():
-        if indicator in items: li = items[indicator]; li["dimension"]=dn; break
-    vs = [r["数值"] for r in fl if isinstance(r.get("数值"),(int,float))]
+        if indicator in items: 
+            li = items[indicator]
+            li["dimension"] = dn
+            break
+    
+    vs = [r["数值"] for r in fl if isinstance(r.get("数值"), (int, float))]
     st_ = {}
-    if vs: st_ = {"count":len(vs),"mean":round(np.mean(vs),2),"std":round(np.std(vs),2),"min":round(min(vs),2),"max":round(max(vs),2)}
-    return {"records":fl,"limit":li,"stats":st_}
+    if vs: 
+        st_ = {
+            "count": len(vs),
+            "mean": round(np.mean(vs), 2),
+            "std": round(np.std(vs), 2),
+            "min": round(min(vs), 2),
+            "max": round(max(vs), 2)
+        }
+    
+    return {"records": fl, "limit": li, "stats": st_}
 
 def page_analyze():
     st.markdown('<div class="main-title">📊 分析交互智能体</div>', unsafe_allow_html=True)
