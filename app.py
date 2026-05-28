@@ -1,6 +1,6 @@
 """
 百合生长模型数据监测智能体平台 V2.3
-增强：指标专属统计异常检测（z-score / IQR / MAD / 孤立森林）+ 联合异常告警
+增强：指标专属统计异常检测（z-score / IQR / MAD / 孤立森林）+ 高温高湿看板提示
 """
 
 import streamlit as st
@@ -166,7 +166,7 @@ def detect_statistical_anomaly(values, indicator=""):
     """
     n = len(values)
     if n < 5:
-        return [False]*n, "跳过", {"method": "跳过", "note": "n<<5"}  # 修复：n<<5 → n<<5
+        return [False]*n, "样本不足", {"method": "样本不足", "note": "n<5，未进行统计检测"}  # 修复：n<5
     
     arr = np.array(values, dtype=float)
     
@@ -243,7 +243,7 @@ def detect_statistical_anomaly(values, indicator=""):
 
 
 # ============================================================
-# 核心评估逻辑（增强版：联合异常检测）
+# 核心评估逻辑（增强版：高温高湿看板提示）
 # ============================================================
 def run_evaluation(records, batch_id="temp"):
     """
@@ -291,7 +291,7 @@ def run_evaluation(records, batch_id="temp"):
                 total_phy_fail += 1
         
         # 统计检测（仅对物理正常的数据）
-        stat_info = {"method": "样本不足", "note": "n<<5，跳过统计检测"}
+        stat_info = {"method": "样本不足", "note": "n<5，未进行统计检测"}
         anomalies = [False] * len(phy_passed)
         method_name = "样本不足"
         
@@ -631,7 +631,7 @@ def page_evaluate():
                         g = groups[i+j]
                         with cols[j]:
                             with st.container():
-                                # ==================== 修改：问题统计标签（替换原"跳过"） ====================
+                                # ==================== 修改：问题统计标签 ====================
                                 # 判定该分组的状态标签
                                 if g['phy_fail'] > 0:
                                     status_tag = f"{g['phy_fail']}条物理越限"
@@ -783,8 +783,8 @@ def page_analyze():
         uf = os.path.join(UNQUALIFIED_DIR, f"unqualified_{bid}.json")
         if os.path.exists(uf):
             with open(uf) as f: uq = json.load(f).get("data",[])
-            # ==================== 增强：增加 MAD / 孤立森林 / 联合异常 筛选（新增） ====================
-            fr = st.selectbox("筛选", ["全部","物理越限","统计异常(z-score)","统计异常(IQR)","统计异常(MAD)","统计异常(孤立森林)","联合异常"])
+            # ==================== 增强：增加 MAD / 孤立森林 筛选（新增） ====================
+            fr = st.selectbox("筛选", ["全部","物理越限","统计异常(z-score)","统计异常(IQR)","统计异常(MAD)","统计异常(孤立森林)"])
             fl = uq
             if fr != "全部":
                 if fr == "物理越限": fl = [r for r in uq if "物理越限" in str(r.get("_fail_type",""))]
@@ -792,8 +792,7 @@ def page_analyze():
                 elif fr == "统计异常(IQR)": fl = [r for r in uq if "IQR" in str(r.get("_fail_type",""))]
                 elif fr == "统计异常(MAD)": fl = [r for r in uq if "MAD" in str(r.get("_fail_type",""))]
                 elif fr == "统计异常(孤立森林)": fl = [r for r in uq if "孤立森林" in str(r.get("_fail_type",""))]
-                elif fr == "联合异常": fl = [r for r in uq if "联合异常" in str(r.get("_fail_type",""))]
-            # ================================================================================
+                # ================================================================================
             st.write(f"共 **{len(fl)}** 条")
             ps, tp = 30, max(1, (len(fl)+29)//30)
             pn = st.number_input("页码", 1, tp, 1)
@@ -881,13 +880,12 @@ def page_test():
         c1.metric("总数据", res["total"]); c2.metric("合格", res["pass"], f"{res['rate']}%")
         c3.metric("物理越限", res["phy_fail"]); c4.metric("统计异常", res["stat_fail"])
 
-# ==================== 高温高湿看板提示（新增） ====================
-    if res.get("high_temp_high_humidity"):
-        hthh = res["high_temp_high_humidity"]
-        st.warning(f"🌡️💧 检测到 **{len(hthh)}** 条高温高湿记录（昼温5-30℃且湿度85-100%），灰霉病风险预警")
-        with st.expander("查看高温高湿明细"):
-            st.dataframe(pd.DataFrame(hthh), hide_index=True)
-# ============================================================
+        # 高温高湿看板提示
+        if res.get("high_temp_high_humidity"):
+            hthh = res["high_temp_high_humidity"]
+            st.warning(f"🌡️💧 检测到 **{len(hthh)}** 条高温高湿记录（昼温5-30℃且湿度85-100%），灰霉病风险预警")
+            with st.expander("查看高温高湿明细"):
+                st.dataframe(pd.DataFrame(hthh), hide_index=True)
 
         # 分组卡片
         st.markdown(f"<div class='section-title'>分组详情（{len(res['groups'])} 组）</div>", unsafe_allow_html=True)
@@ -905,8 +903,16 @@ def page_test():
                                 <span><span class='tag'>n={g['total']}</span><span class='tag{' tag-warn' if g['phy_fail']>0 or g['stat_fail']>0 else ' tag-ok'}'>{f"{g['phy_fail']}条物理越限" if g['phy_fail']>0 else (f"{g['stat_fail']}条统计异常" if g['stat_fail']>0 else "全部数据合格")}</span><span class='tag' style='background:#e3f2fd;color:#1976d2;'>{g['method'] if g['method']!="样本不足" else "n<<5未检"}</span></span>
                             </div>
                         """, unsafe_allow_html=True)
-                        li = g.get("limit",{})
-                        st.write(f"范围: [{li.get('min','N/A')}, {li.get('max','N/A')}] {li.get('unit','')}")
+                        li = g.get("limit", {})
+                        min_v = li.get("min")
+                        max_v = li.get("max")
+                        unit_v = li.get("unit", "")
+                        if min_v is None and max_v is None:
+                            st.write(f"**物理范围:** 未配置物理极限 {unit_v}")
+                        else:
+                            min_show = min_v if min_v is not None else "无下限"
+                            max_show = max_v if max_v is not None else "无上限"
+                            st.write(f"**物理范围:** [{min_show}, {max_show}] {unit_v}")
                         si = g["stat_info"]
                         # ==================== 增强：支持 MAD / 孤立森林 显示（新增） ====================
                         if g["method"]=="z-score": 
