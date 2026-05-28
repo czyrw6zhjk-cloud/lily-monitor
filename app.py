@@ -1,6 +1,6 @@
 """
-百合生长模型数据监测智能体平台 V2.2
-修复：Plotly 前端渲染图表，彻底解决中文方块问题
+百合生长模型数据监测智能体平台 V2.3
+增强：指标专属统计异常检测（z-score / IQR / MAD / 孤立森林）+ 联合异常告警
 """
 
 import streamlit as st
@@ -13,9 +13,12 @@ from plotly.subplots import make_subplots
 import json
 import os
 import zipfile
+# ==================== 统计异常检测模块（新增） ====================
+from scipy import stats
+from sklearn.ensemble import IsolationForest
+# ================================================================
 from datetime import datetime, timedelta
 from collections import defaultdict
-from scipy import stats
 
 # ============================================================
 # 全局路径
@@ -33,6 +36,14 @@ for d in [RAW_DIR, QUALIFIED_DIR, UNQUALIFIED_DIR, METADATA_DIR, TEST_DIR]:
 
 with open(os.path.join(CONFIG_DIR, "physical_limits.json"), "r", encoding="utf-8") as f:
     PHYSICAL_LIMITS = json.load(f)
+
+# ==================== 加载统计方法配置（新增） ====================
+try:
+    with open(os.path.join(CONFIG_DIR, "statistical_methods.json"), "r", encoding="utf-8") as f:
+        STAT_CONFIG = json.load(f)["百合温室统计检测配置"]
+except Exception:
+    STAT_CONFIG = {}
+# ================================================================
 
 # ============================================================
 # CSS
@@ -146,77 +157,228 @@ def check_physical_limit(period, dimension, indicator, value):
     if mx is not None and value > mx: return False, f"物理越限: {value} > {mx}", li
     return True, "合格", li
 
-def detect_statistical_anomaly(values):
+
+# ==================== 统计异常检测（增强版） ====================
+def detect_statistical_anomaly(values, indicator=""):
+    """
+    增强版：支持指标专属方法配置（z-score / IQR / MAD / 孤立森林）
+    返回: (异常掩码列表, 方法名, 统计信息dict)
+    """
     n = len(values)
-    if n < 5: return [False]*n, "样本不足", {"method": "跳过", "note": "n<5"}
+    if n < 5:
+        return [False]*n, "跳过", {"method": "跳过", "note": "n<<5"}
+    
     arr = np.array(values, dtype=float)
-    sk = stats.skew(arr)
-    if abs(sk) < 1.0:
-        mu, sg = np.mean(arr), np.std(arr, ddof=1)
-        if sg == 0: return [False]*n, "z-score", {"method": "z-score", "note": "sg=0"}
-        z = np.abs((arr - mu) / sg)
-        an = (z > 3.0).tolist()
-        return an, "z-score", {"method": "z-score", "mu": round(float(mu),4), "sigma": round(float(sg),4),
-            "range": [round(float(mu-3*sg),4), round(float(mu+3*sg),4)], "n": n, "anomaly": sum(an)}
-    q1, q3 = np.percentile(arr, 25), np.percentile(arr, 75)
-    iq = q3 - q1
-    lb, ub = q1 - 1.5*iq, q3 + 1.5*iq
-    an = ((arr < lb) | (arr > ub)).tolist()
-    return an, "IQR", {"method": "IQR", "Q1": round(float(q1),4), "Q3": round(float(q3),4),
-        "IQR": round(float(iq),4), "lb": round(float(lb),4), "ub": round(float(ub),4), "n": n, "anomaly": sum(an)}
+    
+    # 指标专属配置
+    cfg = STAT_CONFIG.get(indicator, {})
+    method = cfg.get("method", "")
+    
+    # 无配置时按偏度自适应兜底
+    if not method:
+        sk = stats.skew(arr)
+        if abs(sk) < 1.0:
+            method = "zscore"
+        else:
+            method = "iqr"
+    
+    if method == "zscore":
+        mu, sigma = np.mean(arr), np.std(arr, ddof=1)
+        if sigma == 0:
+            return [False]*n, "z-score", {"method": "z-score", "note": "sg=0", "mu": round(float(mu), 4), "sigma": 0}
+        z = np.abs((arr - mu) / sigma)
+        threshold = cfg.get("threshold", 3.0)
+        an = (z > threshold).tolist()
+        return an, "z-score", {
+            "method": "z-score", "mu": round(float(mu), 4), "sigma": round(float(sigma), 4),
+            "range": [round(float(mu - threshold * sigma), 4), round(float(mu + threshold * sigma), 4)],
+            "n": n, "anomaly": sum(an)
+        }
+    
+    elif method == "mad":
+        median = np.median(arr)
+        mad = np.median(np.abs(arr - median))
+        if mad == 0:
+            return [False]*n, "MAD", {"method": "MAD", "note": "MAD=0", "median": round(float(median), 4)}
+        modified_z = np.abs(0.6745 * (arr - median) / mad)
+        threshold = cfg.get("threshold", 3.5)
+        an = (modified_z > threshold).tolist()
+        return an, "MAD", {
+            "method": "MAD", "median": round(float(median), 4), "MAD": round(float(mad), 4),
+            "threshold": threshold, "n": n, "anomaly": sum(an)
+        }
+    
+    elif method == "isolation_forest":
+        if n < 10:
+            # 样本不足时回退到 IQR
+            q1, q3 = np.percentile(arr, 25), np.percentile(arr, 75)
+            iq = q3 - q1
+            lb, ub = q1 - 1.5 * iq, q3 + 1.5 * iq
+            an = ((arr < lb) | (arr > ub)).tolist()
+            return an, "IQR(回退)", {
+                "method": "IQR(回退)", "note": "孤立森林需n≥10",
+                "Q1": round(float(q1), 4), "Q3": round(float(q3), 4), "IQR": round(float(iq), 4),
+                "lb": round(float(lb), 4), "ub": round(float(ub), 4), "n": n, "anomaly": sum(an)
+            }
+        contamination = cfg.get("contamination", 0.05)
+        clf = IsolationForest(contamination=contamination, random_state=42)
+        an = (clf.fit_predict(arr.reshape(-1, 1)) == -1).tolist()
+        return an, "孤立森林", {
+            "method": "孤立森林", "contamination": contamination,
+            "n": n, "anomaly": sum(an)
+        }
+    
+    else:  # iqr default
+        q1, q3 = np.percentile(arr, 25), np.percentile(arr, 75)
+        iq = q3 - q1
+        k = cfg.get("k", 1.5)
+        lb, ub = q1 - k * iq, q3 + k * iq
+        an = ((arr < lb) | (arr > ub)).tolist()
+        return an, "IQR", {
+            "method": "IQR", "Q1": round(float(q1), 4), "Q3": round(float(q3), 4),
+            "IQR": round(float(iq), 4), "lb": round(float(lb), 4), "ub": round(float(ub), 4),
+            "n": n, "anomaly": sum(an)
+        }
+# ============================================================
+
 
 # ============================================================
-# 核心评估逻辑
+# 核心评估逻辑（增强版：联合异常检测）
 # ============================================================
 def run_evaluation(records, batch_id="temp"):
+    # 按时期+指标分组
     groups = defaultdict(list)
     for idx, rec in enumerate(records):
         groups[(rec.get("时期", "未知"), rec.get("指标", "未知"))].append({"idx": idx, "record": rec})
-    qualified_records, unqualified_records = [], []
-    total_phy_fail = total_stat_fail = total_pass = 0
+    
+    # 记录每个idx的状态
+    idx_phy_ok = {}       # idx -> bool
+    idx_phy_reason = {}   # idx -> str
+    idx_stat_anomaly = {} # idx -> bool
+    idx_stat_method = {}  # idx -> str (检测方法名)
+    idx_limit = {}        # idx -> dict
+    
     group_results = []
+    total_phy_fail = 0
+    
+    # 第一轮：物理检查 + 统计检测
     for (period, indicator), items in sorted(groups.items()):
         phy_passed, phy_failed = [], []
+        
         for it in items:
             rec, val = it["record"], it["record"].get("数值")
+            idx = it["idx"]
             if not isinstance(val, (int, float)):
                 try: val = float(val)
                 except: continue
             ok, reason, limit_info = check_physical_limit(rec.get("时期", ""), rec.get("维度", ""), rec.get("指标", ""), val)
-            if ok: phy_passed.append({"record": rec, "value": val})
-            else: phy_failed.append({"record": rec, "reason": reason, "limit": limit_info}); total_phy_fail += 1
+            idx_limit[idx] = limit_info
+            if ok:
+                phy_passed.append({"record": rec, "value": val, "idx": idx})
+                idx_phy_ok[idx] = True
+            else:
+                phy_failed.append({"record": rec, "reason": reason, "idx": idx})
+                idx_phy_ok[idx] = False
+                idx_phy_reason[idx] = reason
+                total_phy_fail += 1
+        
+        # 统计检测
         stat_info = {"method": "跳过", "note": "样本不足"}
+        anomalies = [False] * len(phy_passed)
+        method_name = "跳过"
+        
         if len(phy_passed) >= 5:
             passed_vals = [p["value"] for p in phy_passed]
-            anomalies, method_name, stat_info = detect_statistical_anomaly(passed_vals)
+            anomalies, method_name, stat_info = detect_statistical_anomaly(passed_vals, indicator)
             for i, p in enumerate(phy_passed):
-                if anomalies[i]:
-                    unqualified_records.append({**p["record"], "_fail_reason": f"{method_name}: {p['value']}",
-                        "_fail_type": method_name, "_batch_id": batch_id}); total_stat_fail += 1
-                else: qualified_records.append(p["record"]); total_pass += 1
+                idx = p["idx"]
+                idx_stat_anomaly[idx] = anomalies[i]
+                idx_stat_method[idx] = method_name
+        
         else:
-            for p in phy_passed: qualified_records.append(p["record"]); total_pass += 1
-        for f in phy_failed: unqualified_records.append({**f["record"], "_fail_reason": f["reason"],
-            "_fail_type": "物理越限", "_batch_id": batch_id})
+            for p in phy_passed:
+                idx_stat_anomaly[p["idx"]] = False
+                idx_stat_method[p["idx"]] = "跳过"
+        
+        # 组装分组记录（使用第一次的 anomalies，避免重复计算）
         record_status = []
         for p in phy_passed:
-            stat = "合格"
-            if stat_info.get("method") != "跳过" and len(phy_passed) >= 5:
-                vals = [pp["value"] for pp in phy_passed]
-                an, _, _ = detect_statistical_anomaly(vals)
-                p_idx = vals.index(p["value"])
-                if p_idx < len(an) and an[p_idx]: stat = "统计异常"
-            record_status.append({**p["record"], "_status": stat})
-        for f in phy_failed: record_status.append({**f["record"], "_status": "物理越限"})
-        group_results.append({"period": period, "indicator": indicator,
+            idx = p["idx"]
+            stat = "统计异常" if idx_stat_anomaly.get(idx, False) else "合格"
+            record_status.append({**p["record"], "_status": stat, "__idx": idx})
+        for f in phy_failed:
+            record_status.append({**f["record"], "_status": "物理越限", "__idx": f["idx"]})
+        
+        group_results.append({
+            "period": period, "indicator": indicator,
             "dimension": items[0]["record"].get("维度", ""),
             "total": len(items), "phy_pass": len(phy_passed), "phy_fail": len(phy_failed),
             "method": stat_info.get("method", "跳过"), "stat_info": stat_info,
             "limit": limit_info if phy_failed else (phy_passed[0]["record"] if phy_passed else {}),
-            "records": record_status[:50]})
-    return {"qualified": qualified_records, "unqualified": unqualified_records, "groups": group_results,
-        "total": len(records), "pass": total_pass, "phy_fail": total_phy_fail,
-        "stat_fail": total_stat_fail, "rate": round(total_pass / len(records) * 100, 1) if records else 0}
+            "records": [{k: v for k, v in r.items() if not k.startswith("__")} for r in record_status[:50]]
+        })
+    
+    # 第二轮：联合异常判定（按时间点分组，≥2个指标同时统计异常则提升为联合异常）
+    time_stat_indicators = defaultdict(list)  # time -> [indicators]
+    for idx, rec in enumerate(records):
+        if idx_phy_ok.get(idx, False) and idx_stat_anomaly.get(idx, False):
+            t = rec.get("时间", rec.get("时期", "未知"))
+            time_stat_indicators[t].append(rec.get("指标", "未知"))
+    
+    joint_times = {t for t, inds in time_stat_indicators.items() if len(inds) >= 2}
+    
+    # 最终分流
+    qualified_records, unqualified_records = [], []
+    total_stat_fail = 0
+    total_joint_fail = 0
+    total_pass = 0
+    
+    for idx, rec in enumerate(records):
+        val = rec.get("数值")
+        if not isinstance(val, (int, float)):
+            try: val = float(val)
+            except: continue
+        
+        if not idx_phy_ok.get(idx, False):
+            unqualified_records.append({**rec, "_fail_reason": idx_phy_reason.get(idx, "物理越限"),
+                "_fail_type": "物理越限", "_batch_id": batch_id})
+            continue
+        
+        t = rec.get("时间", rec.get("时期", "未知"))
+        is_stat = idx_stat_anomaly.get(idx, False)
+        
+        if t in joint_times and is_stat:
+            unqualified_records.append({**rec, 
+                "_fail_reason": f"联合异常(时间点{t}共{len(time_stat_indicators[t])}个指标统计异常)",
+                "_fail_type": "联合异常", "_batch_id": batch_id})
+            total_joint_fail += 1
+        elif is_stat:
+            method_name = idx_stat_method.get(idx, "统计")
+            unqualified_records.append({**rec, "_fail_reason": "统计异常",
+                "_fail_type": f"统计异常({method_name})", "_batch_id": batch_id})
+            total_stat_fail += 1
+        else:
+            qualified_records.append(rec)
+            total_pass += 1
+    
+    # 修正 group_results 中的 _status（标记联合异常）
+    for g in group_results:
+        for r in g["records"]:
+            t = r.get("时间", r.get("时期", "未知"))
+            if r.get("_status") == "统计异常" and t in joint_times:
+                r["_status"] = "联合异常"
+    
+    return {
+        "qualified": qualified_records,
+        "unqualified": unqualified_records,
+        "groups": group_results,
+        "total": len(records),
+        "pass": total_pass,
+        "phy_fail": total_phy_fail,
+        "stat_fail": total_stat_fail + total_joint_fail,
+        "joint_fail": total_joint_fail,
+        "rate": round(total_pass / len(records) * 100, 1) if records else 0
+    }
 
 # ============================================================
 # Plotly 图表函数（前端渲染，天然支持中文）
@@ -300,7 +462,7 @@ def plot_trend(x_labels, values, title):
 # 侧边栏导航
 # ============================================================
 def sidebar_nav():
-    st.sidebar.markdown("<div style='text-align:center; padding:6px 0;'><p style='color:#e8f5e9; font-size:22px; font-weight:700; margin:0;'>🌷 百合监测</p><p style='color:rgba(232,245,233,0.5); font-size:11px; margin:2px 0 0 0;'>低代码智能体平台 V2.2</p></div>", unsafe_allow_html=True)
+    st.sidebar.markdown("<div style='text-align:center; padding:6px 0;'><p style='color:#e8f5e9; font-size:22px; font-weight:700; margin:0;'>🌷 百合监测</p><p style='color:rgba(232,245,233,0.5); font-size:11px; margin:2px 0 0 0;'>低代码智能体平台 V2.3</p></div>", unsafe_allow_html=True)
     st.sidebar.divider()
     pages = {"import": "📥 数据导入", "evaluate": "🔍 阈值评估", "analyze": "📊 分析交互", "test": "🧪 测试数据", "database": "🗄️ 数据总库"}
     sel = st.sidebar.radio("导航", list(pages.keys()), format_func=lambda x: pages[x], label_visibility="collapsed")
@@ -378,7 +540,7 @@ def page_import():
 # ============================================================
 def page_evaluate():
     st.markdown('<div class="main-title">🔍 阈值评估与数据分流</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">物理极值判断 → 自适应统计异常检测（z-score / IQR）</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">物理极值判断 → 自适应统计异常检测（z-score / IQR / MAD / 孤立森林）</div>', unsafe_allow_html=True)
 
     m = load_metadata()
     batches = [b for b in m.get("batches", []) if b.get("status") in ("imported", "evaluated")]
@@ -416,6 +578,11 @@ def page_evaluate():
                 c3.metric("❌ 物理越限", result["phy_fail"])
                 c4.metric("⚠️ 统计异常", result["stat_fail"])
 
+                # ==================== 联合异常告警（新增） ====================
+                if result.get("joint_fail", 0) > 0:
+                    st.error(f"🚨 发现 **{result['joint_fail']}** 条联合异常记录（同一时间点≥2个指标同时统计异常），建议优先人工复核！")
+                # ============================================================
+
                 # 分组卡片网格（2列）
                 st.markdown(f"<div class='section-title'>分组评估详情（共 {len(result['groups'])} 个分组）</div>", unsafe_allow_html=True)
                 groups = result["groups"]
@@ -436,9 +603,20 @@ def page_evaluate():
                                 li = g.get("limit",{})
                                 st.write(f"**物理范围:** [{li.get('min','N/A')}, {li.get('max','N/A')}] {li.get('unit','')}")
                                 si = g["stat_info"]
-                                if g["method"]=="z-score": st.write(f"μ = {si.get('mu')} | σ = {si.get('sigma')} | 3σ = [{si.get('range',[0,0])[0]}, {si.get('range',[0,0])[1]}]")
-                                elif g["method"]=="IQR": st.write(f"Q1 = {si.get('Q1')} | Q3 = {si.get('Q3')} | IQR = {si.get('IQR')} | 阈值 = [{si.get('lb')}, {si.get('ub')}]")
-                                else: st.write(f"💡 {si.get('note','')}")
+                                # ==================== 增强：支持 MAD / 孤立森林 显示（新增） ====================
+                                if g["method"]=="z-score": 
+                                    st.write(f"μ = {si.get('mu')} | σ = {si.get('sigma')} | 3σ = [{si.get('range',[0,0])[0]}, {si.get('range',[0,0])[1]}]")
+                                elif g["method"]=="IQR": 
+                                    st.write(f"Q1 = {si.get('Q1')} | Q3 = {si.get('Q3')} | IQR = {si.get('IQR')} | 阈值 = [{si.get('lb')}, {si.get('ub')}]")
+                                elif g["method"]=="MAD": 
+                                    st.write(f"中位数 = {si.get('median')} | MAD = {si.get('MAD')} | 阈值 = ±{si.get('threshold', 3.5)}")
+                                elif g["method"]=="孤立森林": 
+                                    st.write(f"孤立森林 | 污染率 = {si.get('contamination')} | 异常数 = {si.get('anomaly')}")
+                                elif g["method"]=="IQR(回退)": 
+                                    st.write(f"IQR回退(孤立森林样本不足) | Q1={si.get('Q1')} Q3={si.get('Q3')} | 阈值 = [{si.get('lb')}, {si.get('ub')}]")
+                                else: 
+                                    st.write(f"💡 {si.get('note','')}")
+                                # ================================================================================
                                 if g["records"]:
                                     with st.expander(f"📑 数据明细（{len(g['records'])} 条）"):
                                         st.dataframe(pd.DataFrame([{"时期":r.get("时期",""),"维度":r.get("维度",""),"指标":r.get("指标",""),"数值":r.get("数值",""),"状态":r.get("_status","")} for r in g["records"]]), hide_index=True)
@@ -533,12 +711,17 @@ def page_analyze():
         uf = os.path.join(UNQUALIFIED_DIR, f"unqualified_{bid}.json")
         if os.path.exists(uf):
             with open(uf) as f: uq = json.load(f).get("data",[])
-            fr = st.selectbox("筛选", ["全部","物理越限","统计异常(z-score)","统计异常(IQR)"])
+            # ==================== 增强：增加 MAD / 孤立森林 / 联合异常 筛选（新增） ====================
+            fr = st.selectbox("筛选", ["全部","物理越限","统计异常(z-score)","统计异常(IQR)","统计异常(MAD)","统计异常(孤立森林)","联合异常"])
             fl = uq
             if fr != "全部":
                 if fr == "物理越限": fl = [r for r in uq if "物理越限" in str(r.get("_fail_type",""))]
                 elif fr == "统计异常(z-score)": fl = [r for r in uq if "z-score" in str(r.get("_fail_type",""))]
                 elif fr == "统计异常(IQR)": fl = [r for r in uq if "IQR" in str(r.get("_fail_type",""))]
+                elif fr == "统计异常(MAD)": fl = [r for r in uq if "MAD" in str(r.get("_fail_type",""))]
+                elif fr == "统计异常(孤立森林)": fl = [r for r in uq if "孤立森林" in str(r.get("_fail_type",""))]
+                elif fr == "联合异常": fl = [r for r in uq if "联合异常" in str(r.get("_fail_type",""))]
+            # ================================================================================
             st.write(f"共 **{len(fl)}** 条")
             ps, tp = 30, max(1, (len(fl)+29)//30)
             pn = st.number_input("页码", 1, tp, 1)
@@ -572,7 +755,7 @@ def generate_test_data(name, total, normal_ratio, phy_ratio, stat_ratio, period_
         elif r < normal_ratio+phy_ratio: val = np.random.choice([pmin-np.random.uniform(5,20), pmax+np.random.uniform(5,20)])
         else:
             bg = [np.random.uniform(pmin+(pmax-pmin)*0.2, pmax-(pmax-pmin)*0.2) for _ in range(10)]
-            if len(bg)>=5 and abs(stats.skew(bg))<1:
+            if len(bg)>=5 and abs(stats.skew(bg))<<1:
                 mb, sb = np.mean(bg), np.std(bg)
                 val = mb+np.random.choice([-1,1])*np.random.uniform(3.5,5)*sb if sb>0 else mb
             else:
@@ -624,6 +807,11 @@ def page_test():
         c1.metric("总数据", res["total"]); c2.metric("合格", res["pass"], f"{res['rate']}%")
         c3.metric("物理越限", res["phy_fail"]); c4.metric("统计异常", res["stat_fail"])
 
+        # ==================== 联合异常告警（新增） ====================
+        if res.get("joint_fail", 0) > 0:
+            st.error(f"🚨 发现 **{res['joint_fail']}** 条联合异常记录（同一时间点≥2个指标同时统计异常）")
+        # ============================================================
+
         # 分组卡片
         st.markdown(f"<div class='section-title'>分组详情（{len(res['groups'])} 组）</div>", unsafe_allow_html=True)
         for i in range(0, len(res["groups"]), 2):
@@ -643,9 +831,20 @@ def page_test():
                         li = g.get("limit",{})
                         st.write(f"范围: [{li.get('min','N/A')}, {li.get('max','N/A')}] {li.get('unit','')}")
                         si = g["stat_info"]
-                        if g["method"]=="z-score": st.write(f"μ={si.get('mu')} σ={si.get('sigma')}")
-                        elif g["method"]=="IQR": st.write(f"Q1={si.get('Q1')} Q3={si.get('Q3')} IQR={si.get('IQR')}")
-                        else: st.write(f"💡 {si.get('note','')}")
+                        # ==================== 增强：支持 MAD / 孤立森林 显示（新增） ====================
+                        if g["method"]=="z-score": 
+                            st.write(f"μ={si.get('mu')} σ={si.get('sigma')}")
+                        elif g["method"]=="IQR": 
+                            st.write(f"Q1={si.get('Q1')} Q3={si.get('Q3')} IQR={si.get('IQR')}")
+                        elif g["method"]=="MAD": 
+                            st.write(f"中位数={si.get('median')} MAD={si.get('MAD')} 阈值=±{si.get('threshold',3.5)}")
+                        elif g["method"]=="孤立森林": 
+                            st.write(f"孤立森林 污染率={si.get('contamination')} 异常数={si.get('anomaly')}")
+                        elif g["method"]=="IQR(回退)": 
+                            st.write(f"IQR回退 Q1={si.get('Q1')} Q3={si.get('Q3')}")
+                        else: 
+                            st.write(f"💡 {si.get('note','')}")
+                        # ================================================================================
                         if g["records"]:
                             with st.expander(f"明细({len(g['records'])}条)"):
                                 st.dataframe(pd.DataFrame([{"时期":r.get("时期",""),"维度":r.get("维度",""),"指标":r.get("指标",""),"数值":r.get("数值",""),"状态":r.get("_status","")} for r in g["records"]]), hide_index=True)
@@ -767,7 +966,7 @@ def page_database():
 # 主入口
 # ============================================================
 st.markdown('<div class="main-title">🌷 百合生长模型数据监测智能体平台</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">低代码 · 多智能体协同 · 自适应统计异常检测</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">低代码 · 多智能体协同 · 自适应统计异常检测 V2.3</div>', unsafe_allow_html=True)
 st.divider()
 
 page = sidebar_nav()
