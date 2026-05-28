@@ -3,6 +3,7 @@
 增强：指标专属统计异常检测（z-score / IQR / MAD / 孤立森林）+ 高温高湿看板提示
 """
 
+st.cache_data.clear()  # 临时加，刷新一次后删除
 import streamlit as st
 st.set_page_config(page_title="百合生长模型数据监测智能体平台", page_icon="🌷", layout="wide", initial_sidebar_state="expanded")
 
@@ -726,7 +727,7 @@ def cached_wave_data(bid, period, indicator):
     with open(qf) as f: rs = json.load(f).get("data",[])
     fl = [r for r in rs if r.get("时期")==period and r.get("指标")==indicator]
     if not fl: return None
-    fl.sort(key=lambda x: x.get("时间",""))
+    fl.sort(key=lambda x: x.get("时间") or "")
     pd_ = PHYSICAL_LIMITS.get("limits",{}).get(period,{})
     li = None
     for dn, items in pd_.items():
