@@ -3,7 +3,6 @@
 增强：指标专属统计异常检测（z-score / IQR / MAD / 孤立森林）+ 高温高湿看板提示
 """
 
-st.cache_data.clear()  # 临时加，刷新一次后删除
 import streamlit as st
 st.set_page_config(page_title="百合生长模型数据监测智能体平台", page_icon="🌷", layout="wide", initial_sidebar_state="expanded")
 
