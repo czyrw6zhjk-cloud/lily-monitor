@@ -469,9 +469,12 @@ def sidebar_nav():
 # ============================================================
 # 模块1：数据导入
 # ============================================================
+# ============================================================
+# 模块1：数据导入（增强版：导入时物理极值预检）
+# ============================================================
 def page_import():
     st.markdown('<div class="main-title">📥 数据导入智能体</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">支持 .xlsx / .csv | 智能列名匹配 | 空值校验 | 单批次上限 5000 行</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">支持 .xlsx / .csv | 智能列名匹配 | 空值校验 | 导入时物理极值预检</div>', unsafe_allow_html=True)
 
     uploaded = st.file_uploader("📎 选择数据文件", type=["xlsx", "csv"])
     if uploaded: st.info(f"📁 {uploaded.name} | {uploaded.size/1024:.1f} KB")
@@ -490,9 +493,13 @@ def page_import():
 
                 rev_map = {v: k for k, v in col_map.items() if v}
                 df_renamed = df.rename(columns=rev_map)
-                valid_rows, error_details = [], []
+                
+                # ==================== 新增：导入时物理极值预检 ====================
+                valid_rows, error_details, phy_warn_rows = [], [], []
+                
                 for idx, row in df_renamed.iterrows():
                     errs = []
+                    # 基础校验
                     for f in ["指标", "数值"]:
                         if f in row.index and pd.isna(row[f]): errs.append(f"{f}空")
                     if "时期" in row.index and not pd.isna(row["时期"]):
@@ -506,31 +513,152 @@ def page_import():
                     if "数值" in row.index and not pd.isna(row["数值"]):
                         try: float(row["数值"])
                         except: errs.append(f"数值无效")
-                    if errs: error_details.append({"行": int(idx)+2, "时期": str(row.get("时期","")), "维度": str(row.get("维度","")), "指标": str(row.get("指标","")), "数值": str(row.get("数值","")), "错误": ";".join(errs)})
-                    else: valid_rows.append(row.to_dict())
-                if not valid_rows: st.error(f"全部无效"); return
+                    
+                    # 物理极值预检（新增核心逻辑）
+                    if not errs and "数值" in row.index and not pd.isna(row["数值"]):
+                        try:
+                            val = float(row["数值"])
+                            ok, reason, limit_info = check_physical_limit(
+                                row.get("时期", ""), row.get("维度", ""), row.get("指标", ""), val
+                            )
+                            if not ok:
+                                # 物理越限：标记为异常，但记录保留
+                                phy_warn_rows.append({
+                                    "行": int(idx)+2,
+                                    "时期": str(row.get("时期","")),
+                                    "维度": str(row.get("维度","")),
+                                    "指标": str(row.get("指标","")),
+                                    "数值": str(row.get("数值","")),
+                                    "异常类型": "物理越限",
+                                    "异常原因": reason,
+                                    "物理下限": limit_info.get("min"),
+                                    "物理上限": limit_info.get("max"),
+                                    "单位": limit_info.get("unit","")
+                                })
+                                # 仍然导入，但标记状态
+                                row = row.copy()
+                                row["_import_status"] = "物理越限"
+                                row["_import_reason"] = reason
+                        except ValueError as e:
+                            # 物理极限未配置：标记为异常
+                            phy_warn_rows.append({
+                                "行": int(idx)+2,
+                                "时期": str(row.get("时期","")),
+                                "维度": str(row.get("维度","")),
+                                "指标": str(row.get("指标","")),
+                                "数值": str(row.get("数值","")),
+                                "异常类型": "未配置阈值",
+                                "异常原因": str(e),
+                                "物理下限": "N/A",
+                                "物理上限": "N/A",
+                                "单位": ""
+                            })
+                            row = row.copy()
+                            row["_import_status"] = "未配置阈值"
+                            row["_import_reason"] = str(e)
+                    
+                    if errs:
+                        error_details.append({
+                            "行": int(idx)+2,
+                            "时期": str(row.get("时期","")),
+                            "维度": str(row.get("维度","")),
+                            "指标": str(row.get("指标","")),
+                            "数值": str(row.get("数值","")),
+                            "错误": ";".join(errs)
+                        })
+                    else:
+                        valid_rows.append(row.to_dict())
+                
+                # 统计
+                phy_fail_count = len([r for r in phy_warn_rows if r["异常类型"] == "物理越限"])
+                no_limit_count = len([r for r in phy_warn_rows if r["异常类型"] == "未配置阈值"])
+                # ============================================================
+
+                if not valid_rows and not phy_warn_rows: 
+                    st.error(f"全部无效"); 
+                    return
 
                 batch_id = get_next_batch_id()
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                save_json({"batch_id": batch_id, "import_time": ts, "original_file": uploaded.name,
-                    "total_rows": total, "valid_rows": len(valid_rows), "error_rows_count": len(error_details),
-                    "column_mapping": col_map, "data": valid_rows}, os.path.join(RAW_DIR, f"raw_batch_{batch_id}.json"))
+                
+                # 保存所有数据（包括标记为异常的）
+                save_json({
+                    "batch_id": batch_id, 
+                    "import_time": ts, 
+                    "original_file": uploaded.name,
+                    "total_rows": total, 
+                    "valid_rows": len(valid_rows), 
+                    "error_rows_count": len(error_details),
+                    "phy_warn_rows_count": len(phy_warn_rows),
+                    "phy_fail_count": phy_fail_count,
+                    "no_limit_count": no_limit_count,
+                    "column_mapping": col_map, 
+                    "data": valid_rows
+                }, os.path.join(RAW_DIR, f"raw_batch_{batch_id}.json"))
+                
+                # 单独保存异常数据供查看
+                if phy_warn_rows:
+                    save_json({
+                        "batch_id": batch_id,
+                        "import_time": ts,
+                        "phy_warn_rows": phy_warn_rows
+                    }, os.path.join(RAW_DIR, f"raw_batch_{batch_id}_warnings.json"))
+                
                 m = load_metadata()
-                m["batches"].append({"batch_id": batch_id, "batch_name": f"批次_{batch_id}", "import_time": ts,
-                    "original_file": uploaded.name, "total_rows": total, "valid_rows": len(valid_rows),
-                    "status": "imported", "is_test": False})
+                m["batches"].append({
+                    "batch_id": batch_id, 
+                    "batch_name": f"批次_{batch_id}", 
+                    "import_time": ts,
+                    "original_file": uploaded.name, 
+                    "total_rows": total, 
+                    "valid_rows": len(valid_rows),
+                    "phy_warn_count": len(phy_warn_rows),
+                    "status": "imported", 
+                    "is_test": False
+                })
                 save_metadata(m)
 
-                pr = len(valid_rows)/total*100
-                st.success(f"✅ 导入成功！批次 {batch_id} | 总{total} | 有效{len(valid_rows)} | 合格率{pr:.1f}%")
+                # 展示结果
+                pr = len(valid_rows)/total*100 if total > 0 else 0
+                st.success(f"✅ 导入完成！批次 {batch_id} | 总{total} | 有效{len(valid_rows)} | 合格率{pr:.1f}%")
+                
+                # 异常数据看板（新增）
+                if phy_warn_rows:
+                    st.markdown("<div class='section-title'>⚠️ 导入时物理极值预检异常</div>", unsafe_allow_html=True)
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("物理越限", phy_fail_count, delta_color="inverse")
+                    c2.metric("未配置阈值", no_limit_count, delta_color="inverse")
+                    c3.metric("异常占比", f"{len(phy_warn_rows)/total*100:.1f}%")
+                    
+                    with st.expander(f"📋 异常明细（{len(phy_warn_rows)} 条）"):
+                        st.dataframe(pd.DataFrame(phy_warn_rows), hide_index=True)
+                        csv_warn = pd.DataFrame(phy_warn_rows).to_csv(index=False, encoding="utf-8-sig")
+                        st.download_button("⬇️ 导出异常数据CSV", csv_warn, file_name=f"import_warnings_{batch_id}.csv")
+                    
+                    if no_limit_count > 0:
+                        st.error(f"❌ 有 {no_limit_count} 条数据因指标未配置物理极限被标记为异常，请检查 config/physical_limits.json")
+                
+                # 基础错误行
                 if error_details:
-                    with st.expander(f"⚠️ 错误行 ({len(error_details)} 条)"): st.dataframe(pd.DataFrame(error_details), hide_index=True)
+                    with st.expander(f"⚠️ 格式错误行 ({len(error_details)} 条)"): 
+                        st.dataframe(pd.DataFrame(error_details), hide_index=True)
+                
+                # 预览
                 st.markdown("<div class='section-title'>预览（前10行）</div>", unsafe_allow_html=True)
-                st.dataframe(pd.DataFrame(valid_rows[:10]), hide_index=True)
+                preview_df = pd.DataFrame(valid_rows[:10])
+                if "_import_status" in preview_df.columns:
+                    st.dataframe(preview_df[["时期","维度","指标","数值","单位","_import_status"]], hide_index=True)
+                else:
+                    st.dataframe(preview_df, hide_index=True)
+                
+                # 导出原始数据
                 ep = os.path.join(RAW_DIR, f"raw_batch_{batch_id}_export.xlsx")
                 pd.DataFrame(valid_rows).to_excel(ep, index=False)
-                with open(ep, "rb") as f: st.download_button("⬇️ 下载原始数据", f, file_name=f"raw_{batch_id}.xlsx")
-            except Exception as e: st.error(f"异常: {e}")
+                with open(ep, "rb") as f: 
+                    st.download_button("⬇️ 下载原始数据", f, file_name=f"raw_{batch_id}.xlsx")
+                    
+            except Exception as e: 
+                st.error(f"异常: {e}")
 
 # ============================================================
 # 模块2：阈值评估
