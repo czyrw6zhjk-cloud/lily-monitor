@@ -1,14 +1,14 @@
 {
   "百合温室统计检测配置": {
     "昼温": {"method": "iqr", "k": 1.5, "distribution": "normal", "unit": "°C"},
-    "夜温": {"method": "zscore", "threshold": 3, "distribution": "normal", "unit": "°C"},
+    "夜温": {"method": "iqr", "k": 1.5, "distribution": "normal", "unit": "°C"},
+    "光照强度": {"method": "iqr", "k": 1.5, "distribution": "bimodal", "unit": "lux"},
     "湿度": {"method": "iqr", "k": 1.5, "distribution": "skewed", "unit": "%"},
-    "光照强度": {"method": "isolation_forest", "contamination": 0.05, "distribution": "bimodal", "unit": "lux"},
-    "pH值": {"method": "zscore", "threshold": 3, "distribution": "normal", "unit": ""},
+    "pH值": {"method": "iqr", "k": 1.5, "distribution": "normal", "unit": ""},
     "EC值": {"method": "iqr", "k": 1.5, "distribution": "skewed", "unit": "mS/cm"},
     "株高": {"method": "iqr", "k": 1.5, "distribution": "skewed", "unit": "cm"},
     "茎粗": {"method": "iqr", "k": 1.5, "distribution": "normal", "unit": "cm"},
-    "叶长": {"method": "iqr", "k": 1.5, "distribution": "skewed", "unit": "cm"},
-    "叶宽": {"method": "iqr", "k": 1.5, "distribution": "skewed", "unit": "cm"}
+    "花径": {"method": "iqr", "k": 1.5, "distribution": "skewed", "unit": "cm"},
+    "花蕾数": {"method": "iqr", "k": 1.5, "distribution": "skewed", "unit": "个"}
   }
 }
