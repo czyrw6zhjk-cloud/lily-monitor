@@ -260,11 +260,14 @@ def run_evaluation(records, batch_id="temp"):
     idx_limit = {}
     total_phy_fail = 0
     
+    # 第一轮：物理极值检查（全量）
     for idx, rec in enumerate(records):
         val = rec.get("数值")
         if not isinstance(val, (int, float)):
             try: val = float(val)
             except: continue
+        
+        # 修改：捕获未配置阈值，标记为异常而不中断
         try:
             ok, reason, limit_info = check_physical_limit(
                 rec.get("时期", ""), rec.get("维度", ""), rec.get("指标", ""), val
@@ -277,8 +280,11 @@ def run_evaluation(records, batch_id="temp"):
                 idx_phy_reason[idx] = reason
                 total_phy_fail += 1
         except ValueError as e:
-            # 物理极限未配置，直接报错终止
-            raise e
+            # 未配置物理极限：直接标记为异常，不抛错终止
+            idx_phy_ok[idx] = False
+            idx_phy_reason[idx] = f"未配置阈值: {e}"
+            idx_limit[idx] = {"min": None, "max": None, "unit": rec.get("单位", "")}
+            total_phy_fail += 1
     
     # 第二轮：按【指标】分组 IQR 检测（时期仅作标签）
     groups = defaultdict(list)
